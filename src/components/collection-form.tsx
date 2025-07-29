@@ -31,7 +31,6 @@ const formSchema = z.object({
   cleanerName: z.string().min(2, "Name is required"),
   site: z.string().min(1, "Site is required"),
   date: z.date({ required_error: "A date is required." }),
-  carPlate: z.string().min(1, "Car plate is required"),
   amount: z.coerce.number().min(0.01, "Amount must be greater than 0"),
   notes: z.string().optional(),
 });
@@ -51,7 +50,6 @@ export function CollectionForm({ isOpen, setIsOpen, collection }: CollectionForm
     defaultValues: {
       cleanerName: "",
       site: "",
-      carPlate: "",
       amount: 0,
       notes: "",
     },
@@ -68,7 +66,6 @@ export function CollectionForm({ isOpen, setIsOpen, collection }: CollectionForm
         cleanerName: "",
         site: "",
         date: new Date(),
-        carPlate: "",
         amount: 0,
         notes: "",
       });
@@ -135,19 +132,6 @@ export function CollectionForm({ isOpen, setIsOpen, collection }: CollectionForm
                   <FormLabel>Site</FormLabel>
                   <FormControl>
                     <Input placeholder="Building A" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="carPlate"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Car Plate</FormLabel>
-                  <FormControl>
-                    <Input placeholder="P 12345" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

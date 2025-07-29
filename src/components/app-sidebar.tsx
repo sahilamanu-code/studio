@@ -36,7 +36,7 @@ export function AppSidebar() {
             <Waves className="h-6 w-6 text-sidebar-primary-foreground" />
           </div>
           <h1 className="text-xl font-bold font-headline text-sidebar-foreground">
-            TriE Operations
+            Logo | Operations
           </h1>
         </Link>
       </SidebarHeader>

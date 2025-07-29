@@ -31,18 +31,26 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "./ui/date-picker";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { differenceInDays, parseISO } from "date-fns";
 import { Card, CardContent } from "./ui/card";
+import { Banknote, CreditCard, Paperclip, X } from "lucide-react";
+import Image from 'next/image';
+
 
 const formSchema = z.object({
   date: z.date({ required_error: "A date is required." }),
   cleanerName: z.string().min(2, "Please select a cleaner."),
   site: z.string().min(1, "Please select a site."),
-  amount: z.coerce.number().min(0.01, "Amount must be greater than 0"),
-  depositSlip: z.string().optional(), // For MVP, this field is not a file upload
+  cashAmount: z.coerce.number().min(0).default(0),
+  cardAmount: z.coerce.number().min(0).default(0),
+  depositSlip: z.string().optional(),
+}).refine(data => data.cashAmount > 0 || data.cardAmount > 0, {
+  message: "At least one amount (cash or card) must be greater than 0.",
+  path: ["cashAmount"],
 });
+
 
 type DepositFormProps = {
   isOpen: boolean;
@@ -56,7 +64,9 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
   const [pendingItems] = useLocalStorage<PendingItem[]>("pendingItems", []);
   const [cashInHand, setCashInHand] = useState<number | null>(null);
   const { toast } = useToast();
-  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewImage, setPreviewImage] = useState<string | undefined>(undefined);
+
   const allCollectionSources = useMemo(() => [...collections, ...pendingItems], [collections, pendingItems]);
 
   const cleanerNames = useMemo(() => {
@@ -85,7 +95,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
       if (!cleanerData[deposit.cleanerName]) {
         cleanerData[deposit.cleanerName] = { collections: 0, deposits: 0, dates: [] };
       }
-      cleanerData[deposit.cleanerName].deposits += deposit.amount;
+      cleanerData[deposit.cleanerName].deposits += deposit.totalAmount;
     });
 
     return Object.entries(cleanerData).map(([name, data]) => {
@@ -113,45 +123,71 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
     defaultValues: {
       cleanerName: "",
       site: "",
-      amount: 0,
+      cashAmount: 0,
+      cardAmount: 0,
     },
   });
   
   const selectedCleanerName = form.watch("cleanerName");
 
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        form.setValue("depositSlip", dataUrl);
+        setPreviewImage(dataUrl);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   useEffect(() => {
     if (selectedCleanerName) {
       const summary = cleanerSummaries.find(s => s.name === selectedCleanerName);
-      setCashInHand(summary?.cashInHand ?? 0);
+      let effectiveCashInHand = summary?.cashInHand ?? 0;
+      if (deposit && deposit.cleanerName === selectedCleanerName) {
+         effectiveCashInHand += deposit.totalAmount;
+      }
+      setCashInHand(effectiveCashInHand);
     } else {
       setCashInHand(null);
     }
-  }, [selectedCleanerName, cleanerSummaries]);
+  }, [selectedCleanerName, cleanerSummaries, deposit]);
 
 
   useEffect(() => {
     if (deposit) {
       form.reset({
         ...deposit,
+        cashAmount: deposit.cashAmount || 0,
+        cardAmount: deposit.cardAmount || 0,
         date: new Date(deposit.date),
       });
+      setPreviewImage(deposit.depositSlip);
     } else {
       form.reset({
         date: new Date(),
         cleanerName: "",
         site: "",
-        amount: 0,
+        cashAmount: 0,
+        cardAmount: 0,
         depositSlip: "",
       });
+       setPreviewImage(undefined);
     }
   }, [deposit, form, isOpen]);
 
 
   function onSubmit(values: z.infer<typeof formSchema>) {
+    const totalAmount = (values.cashAmount || 0) + (values.cardAmount || 0);
+
     const newDeposit: Deposit = {
       id: deposit?.id || new Date().toISOString(),
       ...values,
       date: values.date.toISOString(),
+      totalAmount,
     };
 
     if (deposit) {
@@ -166,7 +202,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{deposit ? "Edit Deposit" : "Record New Deposit"}</DialogTitle>
           <DialogDescription>
@@ -240,19 +276,77 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
                 </FormItem>
               )}
             />
-            <FormField
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="cashAmount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-2"><Banknote className="h-4 w-4 text-muted-foreground"/> Cash</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.01" placeholder="0.00" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="cardAmount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-muted-foreground"/> Card</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.01" placeholder="0.00" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+             <FormField
               control={form.control}
-              name="amount"
+              name="depositSlip"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Amount Deposited (AED)</FormLabel>
+                  <FormLabel>Deposit Slip</FormLabel>
                   <FormControl>
-                    <Input type="number" step="0.01" placeholder="500.00" {...field} />
+                    <>
+                      <Input 
+                        type="file" 
+                        className="hidden"
+                        ref={fileInputRef}
+                        onChange={handleFileChange}
+                        accept="image/*"
+                      />
+                       <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                          <Paperclip className="mr-2 h-4 w-4"/>
+                          Attach Slip
+                       </Button>
+                    </>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
+            {previewImage && (
+               <div className="relative w-full max-w-xs h-auto">
+                <Image src={previewImage} alt="Deposit slip preview" width={200} height={200} className="rounded-md border object-contain"/>
+                 <Button 
+                    type="button" 
+                    variant="destructive" 
+                    size="icon" 
+                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
+                    onClick={() => {
+                        form.setValue("depositSlip", undefined);
+                        setPreviewImage(undefined);
+                        if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                 >
+                    <X className="h-4 w-4" />
+                 </Button>
+               </div>
+            )}
             <DialogFooter>
               <Button type="submit">Save Deposit</Button>
             </DialogFooter>

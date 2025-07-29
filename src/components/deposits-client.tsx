@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
+import Image from "next/image";
 
 export function DepositsClient() {
   const [deposits, setDeposits] = useLocalStorage<Deposit[]>("deposits", []);
@@ -70,6 +71,7 @@ export function DepositsClient() {
                 <TableHead>Date</TableHead>
                 <TableHead>Cleaner</TableHead>
                 <TableHead>Site</TableHead>
+                <TableHead>Slip</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead><span className="sr-only">Actions</span></TableHead>
               </TableRow>
@@ -81,7 +83,12 @@ export function DepositsClient() {
                     <TableCell>{format(new Date(deposit.date), 'PPP')}</TableCell>
                     <TableCell className="font-medium">{deposit.cleanerName}</TableCell>
                     <TableCell>{deposit.site}</TableCell>
-                    <TableCell className="text-right font-mono">{formatCurrency(deposit.amount)}</TableCell>
+                    <TableCell>
+                      {deposit.depositSlip && (
+                        <Image src={deposit.depositSlip} alt="Deposit slip" width={40} height={40} className="rounded-md object-cover" />
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">{formatCurrency(deposit.totalAmount)}</TableCell>
                     <TableCell>
                        <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -104,7 +111,7 @@ export function DepositsClient() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
+                  <TableCell colSpan={6} className="h-24 text-center">
                     No deposits recorded yet.
                   </TableCell>
                 </TableRow>

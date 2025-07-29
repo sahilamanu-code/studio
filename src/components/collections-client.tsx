@@ -71,7 +71,6 @@ export function CollectionsClient() {
                 <TableHead>Date</TableHead>
                 <TableHead>Cleaner</TableHead>
                 <TableHead>Site</TableHead>
-                <TableHead>Car Plate</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead><span className="sr-only">Actions</span></TableHead>
               </TableRow>
@@ -83,7 +82,6 @@ export function CollectionsClient() {
                     <TableCell>{format(new Date(collection.date), 'PPP')}</TableCell>
                     <TableCell className="font-medium">{collection.cleanerName}</TableCell>
                     <TableCell>{collection.site}</TableCell>
-                    <TableCell>{collection.carPlate}</TableCell>
                     <TableCell className="text-right font-mono">{formatCurrency(collection.amount)}</TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -107,7 +105,7 @@ export function CollectionsClient() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">
+                  <TableCell colSpan={5} className="h-24 text-center">
                     No collections recorded yet.
                   </TableCell>
                 </TableRow>

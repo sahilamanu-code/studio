@@ -37,7 +37,7 @@ export function DashboardClient() {
       if (!cleanerData[deposit.cleanerName]) {
         cleanerData[deposit.cleanerName] = { collections: 0, deposits: 0, dates: [] };
       }
-      cleanerData[deposit.cleanerName].deposits += deposit.amount;
+      cleanerData[deposit.cleanerName].deposits += deposit.totalAmount;
     });
 
     return Object.entries(cleanerData).map(([name, data]) => {

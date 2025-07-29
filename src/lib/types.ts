@@ -3,7 +3,6 @@ export interface Collection {
   cleanerName: string;
   site: string;
   date: string; // ISO string
-  carPlate: string;
   amount: number;
   notes?: string;
 }
@@ -13,8 +12,10 @@ export interface Deposit {
   cleanerName: string; 
   site: string;
   date: string; // ISO string
-  amount: number;
-  depositSlip?: string; // For MVP, we'll just store a note or filename.
+  cashAmount: number;
+  cardAmount: number;
+  totalAmount: number;
+  depositSlip?: string; // data URI for the image
 }
 
 export interface PendingItem {
