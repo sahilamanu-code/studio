@@ -15,7 +15,8 @@ import {
   Banknote,
   Upload,
   HandCoins,
-  Waves
+  Waves,
+  ListTodo
 } from "lucide-react";
 
 export function AppSidebar() {
@@ -23,6 +24,7 @@ export function AppSidebar() {
 
   const menuItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/pending", label: "Pending", icon: ListTodo },
     { href: "/collections", label: "Collections", icon: HandCoins },
     { href: "/deposits", label: "Deposits", icon: Banknote },
     { href: "/import", label: "Import Data", icon: Upload },
