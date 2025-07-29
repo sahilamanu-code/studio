@@ -6,14 +6,6 @@ import * as z from "zod";
 import type { Collection, Deposit, PendingItem, CleanerSummary } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import {
   Form,
   FormControl,
   FormField,
@@ -34,12 +26,14 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { differenceInDays, parseISO } from "date-fns";
 import { Card, CardContent } from "./ui/card";
-import { Banknote, CreditCard, Paperclip, X } from "lucide-react";
+import { Banknote, CreditCard, Paperclip, X, Loader2 } from "lucide-react";
 import Image from 'next/image';
 import { useFirestoreCollection } from "@/hooks/use-firestore-collection";
-import { addDoc, collection as firestoreCollection, doc, updateDoc, writeBatch } from "firebase/firestore";
+import { addDoc, collection as firestoreCollection, doc, updateDoc, writeBatch, getDoc } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { getDownloadURL, ref, uploadString, deleteObject } from "firebase/storage";
+import { useRouter } from "next/navigation";
+import { PageHeader } from "./page-header";
 
 
 const formSchema = z.object({
@@ -49,8 +43,8 @@ const formSchema = z.object({
   cashAmount: z.coerce.number().min(0).default(0),
   cardAmount: z.coerce.number().min(0).default(0),
   authCode: z.string().optional(),
-  depositSlip: z.string().optional(), // This will now hold the image URL from storage
-  depositSlipPreview: z.string().optional(), // For local preview before upload
+  depositSlip: z.string().optional(),
+  depositSlipPreview: z.string().optional(),
 }).refine(data => data.cashAmount > 0 || data.cardAmount > 0, {
   message: "At least one amount (cash or card) must be greater than 0.",
   path: ["cashAmount"],
@@ -58,19 +52,19 @@ const formSchema = z.object({
 
 
 type DepositFormProps = {
-  isOpen: boolean;
-  setIsOpen: (open: boolean) => void;
-  deposit?: Deposit;
+  depositId?: string;
 };
 
-export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
+export function DepositForm({ depositId }: DepositFormProps) {
   const { toast } = useToast();
+  const router = useRouter();
   const { data: collections } = useFirestoreCollection<Collection>('collections');
   const { data: pendingItems } = useFirestoreCollection<PendingItem>('pendingItems');
   const { data: deposits } = useFirestoreCollection<Deposit>('deposits');
   const [cashInHand, setCashInHand] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [initialDeposit, setInitialDeposit] = useState<Deposit | null>(null);
 
   const allCollectionSources = useMemo(() => [...collections, ...pendingItems], [collections, pendingItems]);
 
@@ -129,11 +123,14 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      date: new Date(),
       cleanerName: "",
       site: "",
       cashAmount: 0,
       cardAmount: 0,
       authCode: "",
+      depositSlip: "",
+      depositSlipPreview: "",
     },
   });
   
@@ -155,7 +152,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
   
   const clearImage = () => {
       form.setValue("depositSlipPreview", undefined);
-      form.setValue("depositSlip", undefined); // Also clear the final URL
+      form.setValue("depositSlip", undefined);
       if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -163,63 +160,59 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
     if (selectedCleanerName) {
       const summary = cleanerSummaries.find(s => s.name === selectedCleanerName);
       let effectiveCashInHand = summary?.cashInHand ?? 0;
-      if (deposit && deposit.cleanerName === selectedCleanerName) {
-         effectiveCashInHand += deposit.totalAmount;
+      if (initialDeposit && initialDeposit.cleanerName === selectedCleanerName) {
+         effectiveCashInHand += initialDeposit.totalAmount;
       }
       setCashInHand(effectiveCashInHand);
     } else {
       setCashInHand(null);
     }
-  }, [selectedCleanerName, cleanerSummaries, deposit]);
+  }, [selectedCleanerName, cleanerSummaries, initialDeposit]);
 
 
   useEffect(() => {
-    if (deposit) {
-      form.reset({
-        ...deposit,
-        cashAmount: deposit.cashAmount || 0,
-        cardAmount: deposit.cardAmount || 0,
-        authCode: deposit.authCode || "",
-        date: new Date(deposit.date),
-        depositSlipPreview: deposit.depositSlip,
-      });
-    } else {
-      form.reset({
-        date: new Date(),
-        cleanerName: "",
-        site: "",
-        cashAmount: 0,
-        cardAmount: 0,
-        authCode: "",
-        depositSlip: "",
-        depositSlipPreview: "",
-      });
-    }
-  }, [deposit, form, isOpen]);
+    const fetchDeposit = async () => {
+        if (depositId) {
+            const docRef = doc(db, "deposits", depositId);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                const depositData = { id: docSnap.id, ...docSnap.data()} as Deposit;
+                setInitialDeposit(depositData);
+                form.reset({
+                    ...depositData,
+                    cashAmount: depositData.cashAmount || 0,
+                    cardAmount: depositData.cardAmount || 0,
+                    authCode: depositData.authCode || "",
+                    date: new Date(depositData.date),
+                    depositSlipPreview: depositData.depositSlip,
+                });
+            } else {
+                toast({ variant: 'destructive', title: 'Error', description: 'Deposit not found.'});
+                router.push('/deposits');
+            }
+        }
+    };
+    fetchDeposit();
+  }, [depositId, form, router, toast]);
 
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
     try {
-        const docId = deposit?.id || doc(firestoreCollection(db, "deposits")).id;
-        let fileUrl = deposit?.depositSlip || "";
+        const docId = depositId || doc(firestoreCollection(db, "deposits")).id;
+        let fileUrl = initialDeposit?.depositSlip || "";
 
-        // If there's a new preview image, it means a new file was selected for upload.
-        if (values.depositSlipPreview && values.depositSlipPreview !== deposit?.depositSlip) {
+        if (values.depositSlipPreview && values.depositSlipPreview !== initialDeposit?.depositSlip) {
              const storageRef = ref(storage, `depositSlips/${docId}`);
              await uploadString(storageRef, values.depositSlipPreview, 'data_url');
              fileUrl = await getDownloadURL(storageRef);
-        } else if (!values.depositSlipPreview && deposit?.depositSlip) {
-            // Image was removed
+        } else if (!values.depositSlipPreview && initialDeposit?.depositSlip) {
             const storageRef = ref(storage, `depositSlips/${docId}`);
             await deleteObject(storageRef).catch(err => console.log("No image to delete or error:", err));
             fileUrl = "";
         }
 
-
         const totalAmount = (values.cashAmount || 0) + (values.cardAmount || 0);
-        
-        const batch = writeBatch(db);
         
         const depositData: Omit<Deposit, "id"> = {
             date: values.date.toISOString(),
@@ -232,20 +225,14 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
             authCode: values.authCode,
         };
 
-        if (deposit) {
-            batch.update(doc(db, "deposits", docId), depositData);
-        } else {
-            batch.set(doc(db, "deposits", docId), depositData);
-        }
-        
-        await batch.commit();
-
-        if (deposit) {
+        if (depositId) {
+            await updateDoc(doc(db, "deposits", docId), depositData);
             toast({ title: "Success", description: "Deposit updated successfully." });
         } else {
+            await addDoc(firestoreCollection(db, "deposits"), depositData);
             toast({ title: "Success", description: "Deposit recorded successfully." });
         }
-        setIsOpen(false);
+        router.push("/deposits");
 
     } catch (error) {
         console.error("Error submitting deposit: ", error);
@@ -256,16 +243,15 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{deposit ? "Edit Deposit" : "Record New Deposit"}</DialogTitle>
-          <DialogDescription>
-            Record a bank deposit for a cleaner. The amount will be deducted from their cash in hand.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+    <PageHeader 
+        title={depositId ? "Edit Deposit" : "Record New Deposit"}
+        description="Record a bank deposit for a cleaner. The amount will be deducted from their cash in hand."
+    />
+    <Card>
+      <CardContent className="p-6">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-xl mx-auto">
             <FormField
               control={form.control}
               name="date"
@@ -331,7 +317,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
                 </FormItem>
               )}
             />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="cashAmount"
@@ -381,7 +367,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
                 <FormItem>
                   <FormLabel>Deposit Slip</FormLabel>
                   <FormControl>
-                    <div >
+                    <div>
                       <Input 
                         type="file" 
                         className="hidden"
@@ -413,14 +399,19 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
                  </Button>
                </div>
             )}
-            <DialogFooter>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Saving...' : 'Save Deposit'}
+            <div className="flex gap-2 justify-end">
+              <Button type="button" variant="ghost" onClick={() => router.push('/deposits')}>
+                Cancel
               </Button>
-            </DialogFooter>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isSubmitting ? 'Saving...' : (depositId ? 'Update Deposit' : 'Save Deposit')}
+              </Button>
+            </div>
           </form>
         </Form>
-      </DialogContent>
-    </Dialog>
+      </CardContent>
+    </Card>
+    </>
   );
 }

@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PlusCircle, MoreHorizontal } from "lucide-react";
-import { DepositForm } from "./deposit-form";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,25 +16,20 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import Image from "next/image";
+import Link from "next/link";
 import { doc, deleteDoc } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { deleteObject, ref } from "firebase/storage";
 import { Skeleton } from "./ui/skeleton";
 import { Badge } from "./ui/badge";
+import { useRouter } from "next/navigation";
 
 export function DepositsClient() {
   const { data: deposits, loading } = useFirestoreCollection<Deposit>("deposits", {field: "date", direction: "desc"});
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedDeposit, setSelectedDeposit] = useState<Deposit | undefined>(undefined);
+  const router = useRouter();
 
-  const handleAdd = () => {
-    setSelectedDeposit(undefined);
-    setDialogOpen(true);
-  };
-
-  const handleEdit = (deposit: Deposit) => {
-    setSelectedDeposit(deposit);
-    setDialogOpen(true);
+  const handleEdit = (depositId: string) => {
+    router.push(`/deposits/edit/${depositId}`);
   };
 
   const handleDelete = async (deposit: Deposit) => {
@@ -55,17 +49,13 @@ export function DepositsClient() {
   return (
     <>
       <PageHeader title="Bank Deposits" description="Record all bank deposits made.">
-        <Button onClick={handleAdd}>
-          <PlusCircle className="mr-2 h-4 w-4" />
-          Record Deposit
+        <Button asChild>
+          <Link href="/deposits/new">
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Record Deposit
+          </Link>
         </Button>
       </PageHeader>
-
-      <DepositForm
-        isOpen={dialogOpen}
-        setIsOpen={setDialogOpen}
-        deposit={selectedDeposit}
-      />
 
       <Card>
         <CardHeader>
@@ -137,7 +127,7 @@ export function DepositsClient() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleEdit(deposit)}>
+                          <DropdownMenuItem onClick={() => handleEdit(deposit.id)}>
                             Edit
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDelete(deposit)} className="text-destructive">
