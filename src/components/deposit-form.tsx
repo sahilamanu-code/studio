@@ -34,6 +34,7 @@ import { db, storage } from "@/lib/firebase";
 import { getDownloadURL, ref, uploadString, deleteObject } from "firebase/storage";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "./page-header";
+import { motion } from "framer-motion";
 
 
 const formSchema = z.object({
@@ -199,13 +200,11 @@ export function DepositForm({ depositId }: DepositFormProps) {
         const docId = depositId || doc(firestoreCollection(db, "deposits")).id;
         let fileUrl = initialDeposit?.depositSlip || "";
 
-        // If there's a new preview image (it's a data URL) and it's different from the initial one
         if (values.depositSlipPreview && values.depositSlipPreview.startsWith('data:')) {
              const storageRef = ref(storage, `depositSlips/${docId}`);
              await uploadString(storageRef, values.depositSlipPreview, 'data_url');
              fileUrl = await getDownloadURL(storageRef);
         } else if (!values.depositSlipPreview && initialDeposit?.depositSlip) {
-             // If preview is gone and there was an initial image, delete it from storage
             const storageRef = ref(storage, initialDeposit.depositSlip);
             await deleteObject(storageRef).catch(err => console.log("No image to delete or error:", err));
             fileUrl = "";
@@ -225,10 +224,14 @@ export function DepositForm({ depositId }: DepositFormProps) {
         };
 
         const docRef = doc(db, "deposits", docId);
-        await setDoc(docRef, depositData); // use setDoc to either create or update
+        await setDoc(docRef, depositData); 
 
         toast({ title: "Success", description: `Deposit ${depositId ? 'updated' : 'recorded'} successfully.` });
-        router.push("/deposits");
+        if(depositId) {
+          router.push("/deposits");
+        } else {
+          form.reset();
+        }
 
     } catch (error) {
         console.error("Error submitting deposit: ", error);
@@ -238,59 +241,71 @@ export function DepositForm({ depositId }: DepositFormProps) {
     }
   }
 
+  const cardVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+  };
+
   return (
     <>
     <PageHeader 
         title={depositId ? "Edit Deposit" : "Record New Deposit"}
         description="Record a bank deposit for a cleaner. The amount will be deducted from their cash in hand."
     />
+    <motion.div variants={cardVariants} initial="hidden" animate="visible">
     <Card>
-      <CardContent className="p-6">
+      <CardContent className="p-4 sm:p-6">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-xl mx-auto">
-            <FormField
-              control={form.control}
-              name="date"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Date of Deposit</FormLabel>
-                  <FormControl>
-                    <DatePicker date={field.value} setDate={field.onChange} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="cleanerName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Cleaner Name</FormLabel>
-                   <Select onValueChange={field.onChange} value={field.value}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-2xl mx-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <FormField
+                control={form.control}
+                name="date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Date of Deposit</FormLabel>
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a cleaner" />
-                      </SelectTrigger>
+                      <DatePicker date={field.value} setDate={field.onChange} />
                     </FormControl>
-                    <SelectContent>
-                      {cleanerNames.map(name => (
-                        <SelectItem key={name} value={name}>{name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="cleanerName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Cleaner Name</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a cleaner" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {cleanerNames.map(name => (
+                          <SelectItem key={name} value={name}>{name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
             {cashInHand !== null && (
-              <Card className="bg-muted border-dashed">
-                <CardContent className="p-3">
-                  <p className="text-sm text-muted-foreground">Cash in Hand for {selectedCleanerName}</p>
-                  <p className="text-lg font-bold">{formatCurrency(cashInHand)}</p>
-                </CardContent>
-              </Card>
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
+                <Card className="bg-muted border-dashed">
+                  <CardContent className="p-3">
+                    <p className="text-sm text-muted-foreground">Cash in Hand for {selectedCleanerName}</p>
+                    <p className="text-lg font-bold">{formatCurrency(cashInHand)}</p>
+                  </CardContent>
+                </Card>
+              </motion.div>
             )}
+            
             <FormField
               control={form.control}
               name="site"
@@ -342,6 +357,7 @@ export function DepositForm({ depositId }: DepositFormProps) {
               />
             </div>
             {cardAmount > 0 && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
                  <FormField
                     control={form.control}
                     name="authCode"
@@ -355,6 +371,7 @@ export function DepositForm({ depositId }: DepositFormProps) {
                         </FormItem>
                     )}
                  />
+                </motion.div>
             )}
              <FormField
               control={form.control}
@@ -382,7 +399,7 @@ export function DepositForm({ depositId }: DepositFormProps) {
               )}
             />
             {depositSlipPreview && (
-               <div className="relative w-full max-w-xs h-auto">
+               <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="relative w-full max-w-xs h-auto">
                 <Image src={depositSlipPreview} alt="Deposit slip preview" width={200} height={200} className="rounded-md border object-contain"/>
                  <Button 
                     type="button" 
@@ -393,12 +410,10 @@ export function DepositForm({ depositId }: DepositFormProps) {
                  >
                     <X className="h-4 w-4" />
                  </Button>
-               </div>
+               </motion.div>
             )}
             <div className="flex gap-2 justify-end">
-              <Button type="button" variant="ghost" onClick={() => router.push('/deposits')}>
-                Cancel
-              </Button>
+              {depositId && <Button type="button" variant="ghost" onClick={() => router.push('/deposits')}>Cancel</Button> }
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {isSubmitting ? 'Saving...' : (depositId ? 'Update Deposit' : 'Save Deposit')}
@@ -408,6 +423,7 @@ export function DepositForm({ depositId }: DepositFormProps) {
         </Form>
       </CardContent>
     </Card>
+    </motion.div>
     </>
   );
 }

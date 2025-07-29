@@ -1,5 +1,7 @@
-import { DashboardClient } from "@/components/dashboard-client";
+"use client";
 
-export default function Home() {
-  return <DashboardClient />;
+import { DepositForm } from "@/components/deposit-form";
+
+export default function NewDepositPage() {
+    return <DepositForm />;
 }
