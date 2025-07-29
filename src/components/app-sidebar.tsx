@@ -15,8 +15,8 @@ import {
   Banknote,
   Upload,
   HandCoins,
-  Waves,
-  ListTodo
+  ListTodo,
+  Triangle,
 } from "lucide-react";
 
 export function AppSidebar() {
@@ -35,10 +35,10 @@ export function AppSidebar() {
       <SidebarHeader className="p-4">
         <Link href="/" className="flex items-center gap-2.5">
           <div className="p-1.5 bg-sidebar-primary rounded-lg">
-            <Waves className="h-6 w-6 text-sidebar-primary-foreground" />
+            <Triangle className="h-6 w-6 text-sidebar-primary-foreground" />
           </div>
           <h1 className="text-xl font-bold font-headline text-sidebar-foreground">
-            Logo | Operations
+            Trie | Operations
           </h1>
         </Link>
       </SidebarHeader>
