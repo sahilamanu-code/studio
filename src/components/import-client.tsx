@@ -20,28 +20,55 @@ export function ImportClient() {
     const newItems: PendingItem[] = [];
     let errors = 0;
 
-    lines.forEach((line, index) => {
-      const columns = line.split(/\t|,/); // Split by tab or comma
-      if (columns.length >= 4) {
-        const cleanerName = columns[0]?.trim();
-        const site = columns[1]?.trim();
-        const carPlate = columns[2]?.trim();
-        const amount = parseFloat(columns[3]?.trim());
+    // Remove header and identify column indices
+    const headerLine = lines.shift()?.toLowerCase();
+    if (!headerLine) {
+        toast({
+            variant: "destructive",
+            title: "Import Failed",
+            description: "Pasted data is empty.",
+        });
+        return;
+    }
+    const headers = headerLine.split(/\t|,/).map(h => h.trim());
 
-        if (cleanerName && site && carPlate && !isNaN(amount)) {
-          newItems.push({
-            id: `pending-${new Date().toISOString()}-${index}`,
-            cleanerName,
-            site,
-            carPlate,
-            amount,
-            date: new Date().toISOString(), // Assume import date is today
-          });
-        } else {
-            errors++;
-        }
+    const plateIndex = headers.findIndex(h => h.includes('plate'));
+    const amountIndex = headers.findIndex(h => h.includes('contract amount cash'));
+    const cleanerNameIndex = headers.findIndex(h => h.includes('cleaner name'));
+    const siteNameIndex = headers.findIndex(h => h.includes('site name'));
+
+    if (plateIndex === -1 || amountIndex === -1 || cleanerNameIndex === -1 || siteNameIndex === -1) {
+       toast({
+        variant: "destructive",
+        title: "Import Failed",
+        description: "Could not find all required columns: Plate, Contract Amount Cash, Cleaner Name, Site Name. Please check the pasted data.",
+      });
+      return;
+    }
+
+
+    lines.forEach((line, index) => {
+      // Handle empty lines gracefully
+      if (line.trim() === '') return;
+
+      const columns = line.split(/\t|,/); 
+
+      const cleanerName = columns[cleanerNameIndex]?.trim();
+      const site = columns[siteNameIndex]?.trim();
+      const carPlate = columns[plateIndex]?.trim();
+      const amount = parseFloat(columns[amountIndex]?.trim());
+
+      if (cleanerName && site && carPlate && !isNaN(amount) && amount > 0) {
+        newItems.push({
+          id: `pending-${new Date().toISOString()}-${index}`,
+          cleanerName,
+          site,
+          carPlate,
+          amount,
+          date: new Date().toISOString(), // Assume import date is today
+        });
       } else {
-        errors++;
+          errors++;
       }
     });
 
@@ -56,7 +83,7 @@ export function ImportClient() {
       toast({
         variant: "destructive",
         title: "Import Failed",
-        description: "No valid data found. Please check the format and try again.",
+        description: "No valid data found to import. Please check the format and try again.",
       });
     }
   };
@@ -72,15 +99,14 @@ export function ImportClient() {
         <CardHeader>
           <CardTitle>Paste Data</CardTitle>
           <CardDescription>
-            Paste your data below. The app will attempt to parse it. <br/>
-            Expected format: <code className="font-mono bg-muted p-1 rounded-sm text-sm">Cleaner Name, Site, Car Plate, Amount</code> per line.
+            Paste your data below, including the header row. The app will attempt to parse it automatically.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Textarea
             value={pastedData}
             onChange={(e) => setPastedData(e.target.value)}
-            placeholder="John Doe, Building A, P 12345, 150.50&#10;Jane Smith, Tower B, Q 67890, 200.00"
+            placeholder="SL NO,CONTRACT NO,PLATE,..."
             rows={10}
             className="font-mono"
           />
