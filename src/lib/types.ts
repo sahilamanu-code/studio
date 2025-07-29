@@ -15,7 +15,7 @@ export interface Deposit {
   cashAmount: number;
   cardAmount: number;
   totalAmount: number;
-  depositSlip?: string; // data URI for the image
+  depositSlip?: string; // URL for the image in Firebase Storage
 }
 
 export interface PendingItem {
@@ -28,6 +28,7 @@ export interface PendingItem {
 }
 
 export interface CleanerSummary {
+  id: string;
   name: string;
   totalCollections: number;
   totalDeposits: number;

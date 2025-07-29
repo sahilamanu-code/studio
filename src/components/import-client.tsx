@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useLocalStorage } from "@/hooks/use-local-storage";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,15 +8,18 @@ import { Textarea } from "@/components/ui/textarea";
 import type { PendingItem } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { Upload } from "lucide-react";
+import { writeBatch, doc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 export function ImportClient() {
   const [pastedData, setPastedData] = useState("");
-  const [, setPendingItems] = useLocalStorage<PendingItem[]>("pendingItems", []);
   const { toast } = useToast();
+  const [isImporting, setIsImporting] = useState(false);
 
-  const handleParseData = () => {
+  const handleParseData = async () => {
+    setIsImporting(true);
     const lines = pastedData.trim().split('\n');
-    const newItems: PendingItem[] = [];
+    const newItems: Omit<PendingItem, 'id'>[] = [];
     let errors = 0;
 
     // Remove header and identify column indices
@@ -28,10 +30,11 @@ export function ImportClient() {
             title: "Import Failed",
             description: "Pasted data is empty.",
         });
+        setIsImporting(false);
         return;
     }
     const headers = headerLine.split(/\t|,/).map(h => h.trim());
-
+    
     const plateIndex = headers.findIndex(h => h.includes('plate'));
     const amountIndex = headers.findIndex(h => h.includes('contract amount cash'));
     const cleanerNameIndex = headers.findIndex(h => h.includes('cleaner name'));
@@ -41,14 +44,14 @@ export function ImportClient() {
        toast({
         variant: "destructive",
         title: "Import Failed",
-        description: "Could not find all required columns: Plate, Contract Amount Cash, Cleaner Name, Site Name. Please check the pasted data.",
+        description: "Could not find all required columns: Plate, Contract Amount Cash, Cleaner Name, Site Name. Please check the pasted data and ensure a header row is present.",
       });
+      setIsImporting(false);
       return;
     }
 
 
-    lines.forEach((line, index) => {
-      // Handle empty lines gracefully
+    lines.forEach((line) => {
       if (line.trim() === '') return;
 
       const columns = line.split(/\t|,/); 
@@ -56,16 +59,16 @@ export function ImportClient() {
       const cleanerName = columns[cleanerNameIndex]?.trim();
       const site = columns[siteNameIndex]?.trim();
       const carPlate = columns[plateIndex]?.trim();
-      const amount = parseFloat(columns[amountIndex]?.trim());
+      const amountStr = columns[amountIndex]?.trim();
+      const amount = amountStr ? parseFloat(amountStr) : NaN;
 
       if (cleanerName && site && carPlate && !isNaN(amount) && amount > 0) {
         newItems.push({
-          id: `pending-${new Date().toISOString()}-${index}`,
           cleanerName,
           site,
           carPlate,
           amount,
-          date: new Date().toISOString(), // Assume import date is today
+          date: new Date().toISOString(), 
         });
       } else {
           errors++;
@@ -73,12 +76,27 @@ export function ImportClient() {
     });
 
     if (newItems.length > 0) {
-      setPendingItems(prev => [...prev, ...newItems]);
-      toast({
-        title: "Import Successful",
-        description: `${newItems.length} items imported. ${errors > 0 ? `${errors} lines had errors and were skipped.` : ''}`,
-      });
-      setPastedData("");
+      try {
+        const batch = writeBatch(db);
+        newItems.forEach(item => {
+          const docRef = doc(db, "pendingItems", `pending-${Date.now()}-${Math.random()}`);
+          batch.set(docRef, item);
+        });
+        await batch.commit();
+
+        toast({
+          title: "Import Successful",
+          description: `${newItems.length} items imported. ${errors > 0 ? `${errors} lines had errors and were skipped.` : ''}`,
+        });
+        setPastedData("");
+      } catch (error) {
+        console.error("Error writing to Firestore: ", error);
+        toast({
+          variant: "destructive",
+          title: "Import Failed",
+          description: "An error occurred while saving the data. Please try again.",
+        });
+      }
     } else {
       toast({
         variant: "destructive",
@@ -86,6 +104,7 @@ export function ImportClient() {
         description: "No valid data found to import. Please check the format and try again.",
       });
     }
+    setIsImporting(false);
   };
 
   return (
@@ -100,6 +119,7 @@ export function ImportClient() {
           <CardTitle>Paste Data</CardTitle>
           <CardDescription>
             Paste your data below, including the header row. The app will attempt to parse it automatically.
+            Required columns: 'Cleaner Name', 'Site Name', 'Plate', 'Contract Amount Cash'.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -109,10 +129,11 @@ export function ImportClient() {
             placeholder="SL NO,CONTRACT NO,PLATE,..."
             rows={10}
             className="font-mono"
+            disabled={isImporting}
           />
-          <Button onClick={handleParseData} disabled={!pastedData.trim()}>
+          <Button onClick={handleParseData} disabled={!pastedData.trim() || isImporting}>
             <Upload className="mr-2 h-4 w-4"/>
-            Parse and Import Data
+            {isImporting ? "Importing..." : "Parse and Import Data"}
           </Button>
         </CardContent>
       </Card>

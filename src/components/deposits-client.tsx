@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useFirestoreCollection } from "@/hooks/use-firestore-collection";
 import type { Deposit } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -17,9 +17,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import Image from "next/image";
+import { doc, deleteDoc } from "firebase/firestore";
+import { db, storage } from "@/lib/firebase";
+import { deleteObject, ref } from "firebase/storage";
+import { Skeleton } from "./ui/skeleton";
 
 export function DepositsClient() {
-  const [deposits, setDeposits] = useLocalStorage<Deposit[]>("deposits", []);
+  const { data: deposits, loading } = useFirestoreCollection<Deposit>("deposits", {field: "date", direction: "desc"});
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedDeposit, setSelectedDeposit] = useState<Deposit | undefined>(undefined);
 
@@ -33,17 +37,19 @@ export function DepositsClient() {
     setDialogOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (deposit: Deposit) => {
     if (confirm("Are you sure you want to delete this deposit record?")) {
-        setDeposits(deposits.filter(d => d.id !== id));
+        if (deposit.depositSlip) {
+          const slipRef = ref(storage, `depositSlips/${deposit.id}`);
+          await deleteObject(slipRef).catch(err => console.error("Error deleting slip image: ", err));
+        }
+        await deleteDoc(doc(db, "deposits", deposit.id));
     }
   }
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED' }).format(amount);
   };
-
-  const sortedDeposits = [...deposits].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
     <>
@@ -77,15 +83,28 @@ export function DepositsClient() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedDeposits.length > 0 ? (
-                sortedDeposits.map((deposit) => (
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                   <TableRow key={i}>
+                    <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                    <TableCell><Skeleton className="h-10 w-10 rounded-md" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-5 w-16 inline-block" /></TableCell>
+                    <TableCell><Skeleton className="h-8 w-8" /></TableCell>
+                  </TableRow>
+                ))
+              ) : deposits.length > 0 ? (
+                deposits.map((deposit) => (
                   <TableRow key={deposit.id}>
                     <TableCell>{format(new Date(deposit.date), 'PPP')}</TableCell>
                     <TableCell className="font-medium">{deposit.cleanerName}</TableCell>
                     <TableCell>{deposit.site}</TableCell>
                     <TableCell>
                       {deposit.depositSlip && (
-                        <Image src={deposit.depositSlip} alt="Deposit slip" width={40} height={40} className="rounded-md object-cover" />
+                        <a href={deposit.depositSlip} target="_blank" rel="noopener noreferrer">
+                          <Image src={deposit.depositSlip} alt="Deposit slip" width={40} height={40} className="rounded-md object-cover" />
+                        </a>
                       )}
                     </TableCell>
                     <TableCell className="text-right font-mono">{formatCurrency(deposit.totalAmount)}</TableCell>
@@ -101,7 +120,7 @@ export function DepositsClient() {
                           <DropdownMenuItem onClick={() => handleEdit(deposit)}>
                             Edit
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDelete(deposit.id)} className="text-destructive">
+                          <DropdownMenuItem onClick={() => handleDelete(deposit)} className="text-destructive">
                             Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>

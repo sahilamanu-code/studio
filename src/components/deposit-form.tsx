@@ -3,7 +3,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { useLocalStorage } from "@/hooks/use-local-storage";
 import type { Collection, Deposit, PendingItem, CleanerSummary } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +36,11 @@ import { differenceInDays, parseISO } from "date-fns";
 import { Card, CardContent } from "./ui/card";
 import { Banknote, CreditCard, Paperclip, X } from "lucide-react";
 import Image from 'next/image';
+import { useFirestoreCollection } from "@/hooks/use-firestore-collection";
+import { addDoc, collection as firestoreCollection, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { db, storage } from "@/lib/firebase";
+import { getDownloadURL, ref, uploadString, deleteObject } from "firebase/storage";
+import { set } from "date-fns";
 
 
 const formSchema = z.object({
@@ -45,7 +49,8 @@ const formSchema = z.object({
   site: z.string().min(1, "Please select a site."),
   cashAmount: z.coerce.number().min(0).default(0),
   cardAmount: z.coerce.number().min(0).default(0),
-  depositSlip: z.string().optional(),
+  depositSlip: z.string().optional(), // This will now hold the image URL from storage
+  depositSlipPreview: z.string().optional(), // For local preview before upload
 }).refine(data => data.cashAmount > 0 || data.cardAmount > 0, {
   message: "At least one amount (cash or card) must be greater than 0.",
   path: ["cashAmount"],
@@ -59,13 +64,13 @@ type DepositFormProps = {
 };
 
 export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
-  const [deposits, setDeposits] = useLocalStorage<Deposit[]>("deposits", []);
-  const [collections] = useLocalStorage<Collection[]>("collections", []);
-  const [pendingItems] = useLocalStorage<PendingItem[]>("pendingItems", []);
-  const [cashInHand, setCashInHand] = useState<number | null>(null);
   const { toast } = useToast();
+  const { data: collections } = useFirestoreCollection<Collection>('collections');
+  const { data: pendingItems } = useFirestoreCollection<PendingItem>('pendingItems');
+  const { data: deposits } = useFirestoreCollection<Deposit>('deposits');
+  const [cashInHand, setCashInHand] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [previewImage, setPreviewImage] = useState<string | undefined>(undefined);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const allCollectionSources = useMemo(() => [...collections, ...pendingItems], [collections, pendingItems]);
 
@@ -84,6 +89,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
     const cleanerData: { [key: string]: { collections: number, deposits: number, dates: string[] } } = {};
 
     allCollections.forEach(item => {
+      if (!item.cleanerName) return;
       if (!cleanerData[item.cleanerName]) {
         cleanerData[item.cleanerName] = { collections: 0, deposits: 0, dates: [] };
       }
@@ -92,6 +98,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
     });
 
     deposits.forEach(deposit => {
+      if (!deposit.cleanerName) return;
       if (!cleanerData[deposit.cleanerName]) {
         cleanerData[deposit.cleanerName] = { collections: 0, deposits: 0, dates: [] };
       }
@@ -104,6 +111,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
       const cashInHand = data.collections - data.deposits;
 
       return {
+        id: name,
         name,
         totalCollections: data.collections,
         totalDeposits: data.deposits,
@@ -129,6 +137,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
   });
   
   const selectedCleanerName = form.watch("cleanerName");
+  const depositSlipPreview = form.watch("depositSlipPreview");
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -136,12 +145,17 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
       const reader = new FileReader();
       reader.onloadend = () => {
         const dataUrl = reader.result as string;
-        form.setValue("depositSlip", dataUrl);
-        setPreviewImage(dataUrl);
+        form.setValue("depositSlipPreview", dataUrl);
       };
       reader.readAsDataURL(file);
     }
   };
+  
+  const clearImage = () => {
+      form.setValue("depositSlipPreview", undefined);
+      form.setValue("depositSlip", undefined); // Also clear the final URL
+      if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   useEffect(() => {
     if (selectedCleanerName) {
@@ -164,8 +178,8 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
         cashAmount: deposit.cashAmount || 0,
         cardAmount: deposit.cardAmount || 0,
         date: new Date(deposit.date),
+        depositSlipPreview: deposit.depositSlip,
       });
-      setPreviewImage(deposit.depositSlip);
     } else {
       form.reset({
         date: new Date(),
@@ -174,30 +188,57 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
         cashAmount: 0,
         cardAmount: 0,
         depositSlip: "",
+        depositSlipPreview: "",
       });
-       setPreviewImage(undefined);
     }
   }, [deposit, form, isOpen]);
 
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    const totalAmount = (values.cashAmount || 0) + (values.cardAmount || 0);
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    setIsSubmitting(true);
+    try {
+        const docId = deposit?.id || doc(firestoreCollection(db, "deposits")).id;
+        let fileUrl = deposit?.depositSlip || "";
 
-    const newDeposit: Deposit = {
-      id: deposit?.id || new Date().toISOString(),
-      ...values,
-      date: values.date.toISOString(),
-      totalAmount,
-    };
+        // If there's a new preview image, it means a new file was selected for upload.
+        if (values.depositSlipPreview && values.depositSlipPreview !== deposit?.depositSlip) {
+             const storageRef = ref(storage, `depositSlips/${docId}`);
+             await uploadString(storageRef, values.depositSlipPreview, 'data_url');
+             fileUrl = await getDownloadURL(storageRef);
+        } else if (!values.depositSlipPreview && deposit?.depositSlip) {
+            // Image was removed
+            const storageRef = ref(storage, `depositSlips/${docId}`);
+            await deleteObject(storageRef).catch(err => console.log("No image to delete or error:", err));
+            fileUrl = "";
+        }
 
-    if (deposit) {
-      setDeposits(deposits.map((d) => (d.id === deposit.id ? newDeposit : d)));
-      toast({ title: "Success", description: "Deposit updated successfully." });
-    } else {
-      setDeposits([...deposits, newDeposit]);
-      toast({ title: "Success", description: "Deposit recorded successfully." });
+
+        const totalAmount = (values.cashAmount || 0) + (values.cardAmount || 0);
+        const depositData: Omit<Deposit, "id"> = {
+            date: values.date.toISOString(),
+            cleanerName: values.cleanerName,
+            site: values.site,
+            cashAmount: values.cashAmount,
+            cardAmount: values.cardAmount,
+            totalAmount,
+            depositSlip: fileUrl,
+        };
+
+        if (deposit) {
+            await updateDoc(doc(db, "deposits", docId), depositData);
+            toast({ title: "Success", description: "Deposit updated successfully." });
+        } else {
+            await addDoc(firestoreCollection(db, "deposits"), depositData);
+            toast({ title: "Success", description: "Deposit recorded successfully." });
+        }
+        setIsOpen(false);
+
+    } catch (error) {
+        console.error("Error submitting deposit: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Could not save deposit record." });
+    } finally {
+        setIsSubmitting(false);
     }
-    setIsOpen(false);
   }
 
   return (
@@ -230,7 +271,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Cleaner Name</FormLabel>
-                   <Select onValueChange={field.onChange} defaultValue={field.value}>
+                   <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a cleaner" />
@@ -260,7 +301,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Site</FormLabel>
-                   <Select onValueChange={field.onChange} defaultValue={field.value}>
+                   <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a site" />
@@ -306,7 +347,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
             </div>
              <FormField
               control={form.control}
-              name="depositSlip"
+              name="depositSlipPreview"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Deposit Slip</FormLabel>
@@ -329,26 +370,24 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
                 </FormItem>
               )}
             />
-            {previewImage && (
+            {depositSlipPreview && (
                <div className="relative w-full max-w-xs h-auto">
-                <Image src={previewImage} alt="Deposit slip preview" width={200} height={200} className="rounded-md border object-contain"/>
+                <Image src={depositSlipPreview} alt="Deposit slip preview" width={200} height={200} className="rounded-md border object-contain"/>
                  <Button 
                     type="button" 
                     variant="destructive" 
                     size="icon" 
                     className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
-                    onClick={() => {
-                        form.setValue("depositSlip", undefined);
-                        setPreviewImage(undefined);
-                        if (fileInputRef.current) fileInputRef.current.value = "";
-                    }}
+                    onClick={clearImage}
                  >
                     <X className="h-4 w-4" />
                  </Button>
                </div>
             )}
             <DialogFooter>
-              <Button type="submit">Save Deposit</Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Saving...' : 'Save Deposit'}
+              </Button>
             </DialogFooter>
           </form>
         </Form>

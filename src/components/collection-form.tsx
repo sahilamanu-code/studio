@@ -3,8 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { useLocalStorage } from "@/hooks/use-local-storage";
-import type { Collection } from "@/lib/types";
+import type { Collection, PendingItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,8 +23,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "./ui/date-picker";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { addDoc, collection as firestoreCollection, doc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useFirestoreCollection } from "@/hooks/use-firestore-collection";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 const formSchema = z.object({
   cleanerName: z.string().min(2, "Name is required"),
@@ -42,8 +45,21 @@ type CollectionFormProps = {
 };
 
 export function CollectionForm({ isOpen, setIsOpen, collection }: CollectionFormProps) {
-  const [collections, setCollections] = useLocalStorage<Collection[]>("collections", []);
   const { toast } = useToast();
+  const { data: collections } = useFirestoreCollection<Collection>("collections");
+  const { data: pendingItems } = useFirestoreCollection<PendingItem>("pendingItems");
+
+  const allCollectionSources = useMemo(() => [...collections, ...pendingItems], [collections, pendingItems]);
+
+  const cleanerNames = useMemo(() => {
+    const names = new Set(allCollectionSources.map(c => c.cleanerName));
+    return Array.from(names).sort();
+  }, [allCollectionSources]);
+
+  const siteNames = useMemo(() => {
+    const sites = new Set(allCollectionSources.map(c => c.site));
+    return Array.from(sites).sort();
+  }, [allCollectionSources]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -73,21 +89,26 @@ export function CollectionForm({ isOpen, setIsOpen, collection }: CollectionForm
   }, [collection, form, isOpen]);
 
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    const newCollection: Collection = {
-      id: collection?.id || new Date().toISOString(),
-      ...values,
-      date: values.date.toISOString(),
-    };
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    try {
+        const newCollectionData = {
+            ...values,
+            date: values.date.toISOString(),
+        };
 
-    if (collection) {
-      setCollections(collections.map((c) => (c.id === collection.id ? newCollection : c)));
-      toast({ title: "Success", description: "Collection updated successfully." });
-    } else {
-      setCollections([...collections, newCollection]);
-      toast({ title: "Success", description: "Collection added successfully." });
+        if (collection) {
+            const collectionRef = doc(db, "collections", collection.id);
+            await updateDoc(collectionRef, newCollectionData);
+            toast({ title: "Success", description: "Collection updated successfully." });
+        } else {
+            await addDoc(firestoreCollection(db, "collections"), newCollectionData);
+            toast({ title: "Success", description: "Collection added successfully." });
+        }
+        setIsOpen(false);
+    } catch (error) {
+        console.error("Error saving collection: ", error);
+        toast({ variant: "destructive", title: "Error", description: "Could not save collection." });
     }
-    setIsOpen(false);
   }
 
   return (
@@ -117,9 +138,18 @@ export function CollectionForm({ isOpen, setIsOpen, collection }: CollectionForm
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Cleaner Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="John Doe" {...field} />
-                  </FormControl>
+                   <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a cleaner" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {cleanerNames.map(name => (
+                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
@@ -130,9 +160,18 @@ export function CollectionForm({ isOpen, setIsOpen, collection }: CollectionForm
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Site</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Building A" {...field} />
-                  </FormControl>
+                  <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a site" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {siteNames.map(name => (
+                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

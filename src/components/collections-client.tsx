@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useFirestoreCollection } from "@/hooks/use-firestore-collection";
 import type { Collection } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -16,9 +16,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
+import { doc, deleteDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { Skeleton } from "./ui/skeleton";
 
 export function CollectionsClient() {
-  const [collections, setCollections] = useLocalStorage<Collection[]>("collections", []);
+  const { data: collections, loading } = useFirestoreCollection<Collection>("collections", {field: "date", direction: "desc"});
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState<Collection | undefined>(undefined);
 
@@ -32,9 +35,9 @@ export function CollectionsClient() {
     setDialogOpen(true);
   };
   
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this collection?")) {
-        setCollections(collections.filter(c => c.id !== id));
+        await deleteDoc(doc(db, "collections", id));
     }
   }
 
@@ -42,9 +45,6 @@ export function CollectionsClient() {
     return new Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED' }).format(amount);
   };
   
-  const sortedCollections = [...collections].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-
   return (
     <>
       <PageHeader title="Cash Collections" description="Log all daily cash collections from cleaners.">
@@ -76,8 +76,18 @@ export function CollectionsClient() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedCollections.length > 0 ? (
-                sortedCollections.map((collection) => (
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-5 w-16 inline-block" /></TableCell>
+                    <TableCell><Skeleton className="h-8 w-8" /></TableCell>
+                  </TableRow>
+                ))
+              ) : collections.length > 0 ? (
+                collections.map((collection) => (
                   <TableRow key={collection.id}>
                     <TableCell>{format(new Date(collection.date), 'PPP')}</TableCell>
                     <TableCell className="font-medium">{collection.cleanerName}</TableCell>

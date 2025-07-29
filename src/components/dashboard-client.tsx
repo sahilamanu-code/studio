@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useMemo } from "react";
 import type { Collection, Deposit, PendingItem, CleanerSummary } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,22 +9,23 @@ import { Badge } from "@/components/ui/badge";
 import { differenceInDays, parseISO } from "date-fns";
 import { AlertTriangle, TrendingUp } from "lucide-react";
 import { Skeleton } from "./ui/skeleton";
+import { useFirestoreCollection } from "@/hooks/use-firestore-collection";
 
 export function DashboardClient() {
-  const [collections] = useLocalStorage<Collection[]>("collections", []);
-  const [deposits] = useLocalStorage<Deposit[]>("deposits", []);
-  const [pendingItems] = useLocalStorage<PendingItem[]>("pendingItems", []);
-  const [isMounted, setIsMounted] = useState(false);
+  const { data: collections, loading: loadingCollections } = useFirestoreCollection<Collection>("collections");
+  const { data: deposits, loading: loadingDeposits } = useFirestoreCollection<Deposit>("deposits");
+  const { data: pendingItems, loading: loadingPending } = useFirestoreCollection<PendingItem>("pendingItems");
 
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  const isLoading = loadingCollections || loadingDeposits || loadingPending;
 
   const cleanerSummaries = useMemo<CleanerSummary[]>(() => {
+    if (isLoading) return [];
+    
     const allCollections = [...collections, ...pendingItems];
     const cleanerData: { [key: string]: { collections: number, deposits: number, dates: string[] } } = {};
 
     allCollections.forEach(item => {
+      if (!item.cleanerName) return;
       if (!cleanerData[item.cleanerName]) {
         cleanerData[item.cleanerName] = { collections: 0, deposits: 0, dates: [] };
       }
@@ -34,6 +34,7 @@ export function DashboardClient() {
     });
 
     deposits.forEach(deposit => {
+      if (!deposit.cleanerName) return;
       if (!cleanerData[deposit.cleanerName]) {
         cleanerData[deposit.cleanerName] = { collections: 0, deposits: 0, dates: [] };
       }
@@ -46,6 +47,7 @@ export function DashboardClient() {
       const cashInHand = data.collections - data.deposits;
 
       return {
+        id: name,
         name,
         totalCollections: data.collections,
         totalDeposits: data.deposits,
@@ -54,7 +56,7 @@ export function DashboardClient() {
         daysSinceLastCollection: lastCollectionDate ? differenceInDays(new Date(), lastCollectionDate) : null
       };
     }).sort((a,b) => b.cashInHand - a.cashInHand);
-  }, [collections, deposits, pendingItems]);
+  }, [collections, deposits, pendingItems, isLoading]);
 
   const totalCashInHand = useMemo(() => {
     return cleanerSummaries.reduce((acc, summary) => acc + summary.cashInHand, 0);
@@ -68,7 +70,7 @@ export function DashboardClient() {
     return new Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED' }).format(amount);
   };
 
-  if (!isMounted) {
+  if (isLoading) {
     return (
      <>
       <PageHeader
@@ -160,7 +162,7 @@ export function DashboardClient() {
             </TableHeader>
             <TableBody>
               {cleanerSummaries.map(summary => (
-                <TableRow key={summary.name}>
+                <TableRow key={summary.id}>
                   <TableCell className="font-medium">{summary.name}</TableCell>
                   <TableCell className="text-right font-mono">{formatCurrency(summary.cashInHand)}</TableCell>
                   <TableCell>
@@ -179,7 +181,7 @@ export function DashboardClient() {
                   </TableCell>
                 </TableRow>
               ))}
-              {cleanerSummaries.length === 0 && (
+              {cleanerSummaries.length === 0 && !isLoading && (
                  <TableRow>
                     <TableCell colSpan={4} className="h-24 text-center">
                       No data available. Start by importing data or adding collections.
