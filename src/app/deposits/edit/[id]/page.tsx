@@ -8,6 +8,6 @@ type EditDepositPageProps = {
     }
 }
 
-export default function EditDepositPage({ params: { id } }: EditDepositPageProps) {
-    return <DepositForm depositId={id} />;
+export default function EditDepositPage({ params }: EditDepositPageProps) {
+    return <DepositForm depositId={params.id} />;
 }
