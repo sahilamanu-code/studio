@@ -54,25 +54,26 @@ export function CollectionsClient() {
   }
 
   const handleDeleteSelected = async () => {
-    if (selectedIds.length === 0) return;
-    if (confirm(`Are you sure you want to delete ${selectedIds.length} selected item(s)?`)) {
-        setIsDeleting(true);
-        const batch = writeBatch(db);
-        selectedIds.forEach(id => {
-            const docRef = doc(db, "collections", id);
-            batch.delete(docRef);
-        });
-        
-        try {
-            await batch.commit();
-            setSelectedIds([]);
-            toast({ title: "Success", description: `${selectedIds.length} collections deleted.` });
-        } catch (error) {
-            console.error("Error deleting collections:", error);
-            toast({ variant: "destructive", title: "Error", description: "Could not delete selected collections." });
-        } finally {
-            setIsDeleting(false);
-        }
+    if (selectedIds.length === 0 || !confirm(`Are you sure you want to delete ${selectedIds.length} selected item(s)?`)) {
+      return;
+    }
+    
+    setIsDeleting(true);
+    const batch = writeBatch(db);
+    selectedIds.forEach(id => {
+      const docRef = doc(db, "collections", id);
+      batch.delete(docRef);
+    });
+    
+    try {
+      await batch.commit();
+      toast({ title: "Success", description: `${selectedIds.length} collections deleted.` });
+      setSelectedIds([]);
+    } catch (error) {
+      console.error("Error deleting collections:", error);
+      toast({ variant: "destructive", title: "Error", description: "Could not delete selected collections." });
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -95,17 +96,16 @@ export function CollectionsClient() {
   return (
     <>
       <PageHeader title="Cash Collections" description="Log all daily cash collections from cleaners.">
-        {selectedIds.length > 0 ? (
+        {selectedIds.length > 0 && (
           <Button variant="destructive" onClick={handleDeleteSelected} disabled={isDeleting}>
             {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
             Delete ({selectedIds.length})
           </Button>
-        ) : (
-          <Button onClick={handleAdd}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Add Collection
-          </Button>
         )}
+        <Button onClick={handleAdd}>
+          <PlusCircle className="mr-2 h-4 w-4" />
+          Add Collection
+        </Button>
       </PageHeader>
 
       <CollectionForm

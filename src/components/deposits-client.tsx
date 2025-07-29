@@ -42,11 +42,11 @@ export function DepositsClient() {
   const handleDelete = async (deposit: Deposit) => {
     if (confirm("Are you sure you want to delete this deposit record?")) {
         try {
+            await deleteDoc(doc(db, "deposits", deposit.id));
             if (deposit.depositSlip) {
               const slipRef = ref(storage, deposit.depositSlip);
               await deleteObject(slipRef).catch(err => console.error("Error deleting slip image: ", err));
             }
-            await deleteDoc(doc(db, "deposits", deposit.id));
             toast({ title: "Success", description: "Deposit deleted." });
         } catch (error) {
             console.error("Error deleting deposit:", error);
@@ -56,41 +56,48 @@ export function DepositsClient() {
   }
 
   const handleDeleteSelected = async () => {
-    if (selectedIds.length === 0) return;
-    if (confirm(`Are you sure you want to delete ${selectedIds.length} selected item(s)?`)) {
-        setIsDeleting(true);
-        const batch = writeBatch(db);
-        const slipsToDelete: string[] = [];
+    if (selectedIds.length === 0 || !confirm(`Are you sure you want to delete ${selectedIds.length} selected item(s)?`)) {
+      return;
+    }
+    
+    setIsDeleting(true);
+    const batch = writeBatch(db);
+    const slipsToDelete: string[] = [];
 
-        selectedIds.forEach(id => {
-            const deposit = deposits.find(d => d.id === id);
-            if (deposit) {
-                const docRef = doc(db, "deposits", id);
-                batch.delete(docRef);
-                if (deposit.depositSlip) {
-                    slipsToDelete.push(deposit.depositSlip);
-                }
-            }
-        });
-
-        try {
-            await batch.commit();
-            
-            const deletePromises = slipsToDelete.map(slipUrl => {
-                const slipRef = ref(storage, slipUrl);
-                return deleteObject(slipRef);
-            });
-
-            await Promise.allSettled(deletePromises.map(p => p.catch(e => console.error("Error deleting a slip:", e))));
-            
-            setSelectedIds([]);
-            toast({ title: "Success", description: `${selectedIds.length} deposits deleted.` });
-        } catch (error) {
-            console.error("Error deleting deposits: ", error);
-            toast({ variant: "destructive", title: "Error", description: "Could not delete selected deposits." });
-        } finally {
-            setIsDeleting(false);
+    selectedIds.forEach(id => {
+      const deposit = deposits.find(d => d.id === id);
+      if (deposit) {
+        const docRef = doc(db, "deposits", id);
+        batch.delete(docRef);
+        if (deposit.depositSlip) {
+          slipsToDelete.push(deposit.depositSlip);
         }
+      }
+    });
+
+    try {
+      await batch.commit();
+      
+      const deletePromises = slipsToDelete.map(slipUrl => {
+        try {
+          const slipRef = ref(storage, slipUrl);
+          return deleteObject(slipRef);
+        } catch (e) {
+          // This can happen if the URL is invalid or points to a non-existent object
+          console.error(`Could not create storage reference for slip: ${slipUrl}`, e);
+          return Promise.resolve(); // Resolve to not break Promise.allSettled
+        }
+      });
+      
+      await Promise.allSettled(deletePromises);
+      
+      toast({ title: "Success", description: `${selectedIds.length} deposits deleted.` });
+      setSelectedIds([]);
+    } catch (error) {
+      console.error("Error batch deleting deposits: ", error);
+      toast({ variant: "destructive", title: "Error", description: "Could not delete selected deposits." });
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -113,19 +120,18 @@ export function DepositsClient() {
   return (
     <>
       <PageHeader title="Bank Deposits" description="Record all bank deposits made.">
-        {selectedIds.length > 0 ? (
+        {selectedIds.length > 0 && (
           <Button variant="destructive" onClick={handleDeleteSelected} disabled={isDeleting}>
             {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
             Delete ({selectedIds.length})
           </Button>
-        ) : (
-          <Button asChild>
-            <Link href="/deposits/new">
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Record Deposit
-            </Link>
-          </Button>
         )}
+        <Button asChild>
+          <Link href="/deposits/new">
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Record Deposit
+          </Link>
+        </Button>
       </PageHeader>
 
       <Card>
