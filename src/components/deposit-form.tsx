@@ -126,7 +126,7 @@ export function DepositForm({ depositId }: DepositFormProps) {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      date: new Date(),
+      date: undefined,
       cleanerName: "",
       site: "",
       cashAmount: 0,

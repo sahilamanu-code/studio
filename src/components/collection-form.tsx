@@ -66,6 +66,7 @@ export function CollectionForm({ isOpen, setIsOpen, collection }: CollectionForm
     defaultValues: {
       cleanerName: "",
       site: "",
+      date: undefined,
       amount: 0,
       notes: "",
     },
