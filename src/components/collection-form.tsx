@@ -48,6 +48,11 @@ export function CollectionForm({ isOpen, setIsOpen, collection }: CollectionForm
   const { toast } = useToast();
   const { data: collections } = useFirestoreCollection<Collection>("collections");
   const { data: pendingItems } = useFirestoreCollection<PendingItem>("pendingItems");
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const allCollectionSources = useMemo(() => [...collections, ...pendingItems], [collections, pendingItems]);
 
@@ -86,11 +91,11 @@ export function CollectionForm({ isOpen, setIsOpen, collection }: CollectionForm
         amount: 0,
         notes: "",
       });
-      if (isOpen) {
+      if (isOpen && isMounted) {
         form.setValue("date", new Date());
       }
     }
-  }, [collection, form, isOpen]);
+  }, [collection, form, isOpen, isMounted]);
 
 
   async function onSubmit(values: z.infer<typeof formSchema>) {

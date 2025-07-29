@@ -7,6 +7,8 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
+  SidebarTrigger,
+  SidebarFooter,
 } from "@/components/ui/sidebar";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -17,13 +19,25 @@ import {
   HandCoins,
   ListTodo,
   Home,
+  LogOut,
+  Lock,
 } from "lucide-react";
+import { Button } from "./ui/button";
 
-export function AppSidebar() {
+type AppSidebarProps = {
+  isAuthenticated: boolean;
+  onAuthRequest: () => void;
+  onLogout: () => void;
+};
+
+export function AppSidebar({ isAuthenticated, onAuthRequest, onLogout }: AppSidebarProps) {
   const pathname = usePathname();
 
-  const menuItems = [
+  const publicMenuItems = [
     { href: "/", label: "Record Deposit", icon: Home },
+  ];
+
+  const protectedMenuItems = [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/pending", label: "Pending", icon: ListTodo },
     { href: "/collections", label: "Collections", icon: HandCoins },
@@ -31,24 +45,35 @@ export function AppSidebar() {
     { href: "/import", label: "Import Data", icon: Upload },
   ];
 
+  const handleProtectedClick = (e: React.MouseEvent, href: string) => {
+    if (!isAuthenticated) {
+      e.preventDefault();
+      onAuthRequest();
+    }
+  };
+
   return (
     <Sidebar>
       <SidebarHeader className="p-4">
-        <Link href="/" className="flex items-center gap-2.5">
-          <div className="flex items-center gap-2.5">
+        <div className="flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2.5">
             <h1 className="text-xl font-bold font-headline text-sidebar-foreground">
               Trie | Operations
             </h1>
+          </Link>
+          <div className="md:hidden">
+            <SidebarTrigger />
           </div>
-        </Link>
+        </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarMenu>
-          {menuItems.map((item) => (
+          {/* Public menu items */}
+          {publicMenuItems.map((item) => (
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
                 asChild
-                isActive={pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))}
+                isActive={pathname === item.href}
                 className="justify-start"
                 tooltip={item.label}
               >
@@ -59,8 +84,41 @@ export function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
+          
+          {/* Protected menu items */}
+          {protectedMenuItems.map((item) => (
+            <SidebarMenuItem key={item.href}>
+              <SidebarMenuButton
+                asChild={isAuthenticated}
+                isActive={isAuthenticated && (pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)))}
+                className="justify-start"
+                tooltip={item.label}
+              >
+                {isAuthenticated ? (
+                  <Link href={item.href}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                ) : (
+                  <button onClick={(e) => handleProtectedClick(e, item.href)} className="w-full flex items-center gap-2">
+                    <item.icon />
+                    <span>{item.label}</span>
+                    <Lock className="ml-auto h-4 w-4 opacity-50" />
+                  </button>
+                )}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
         </SidebarMenu>
       </SidebarContent>
+      {isAuthenticated && (
+        <SidebarFooter className="p-4">
+          <Button variant="outline" onClick={onLogout} className="w-full">
+            <LogOut className="mr-2 h-4 w-4" />
+            Logout
+          </Button>
+        </SidebarFooter>
+      )}
     </Sidebar>
   );
 }

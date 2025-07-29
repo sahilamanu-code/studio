@@ -68,6 +68,11 @@ export function DepositForm({ depositId }: DepositFormProps) {
   const [initialDeposit, setInitialDeposit] = useState<Deposit | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   const [submittedDeposit, setSubmittedDeposit] = useState<FormValues & { totalAmount: number } | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const allCollectionSources = useMemo(() => [...collections, ...pendingItems], [collections, pendingItems]);
 
@@ -126,7 +131,7 @@ export function DepositForm({ depositId }: DepositFormProps) {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      date: undefined,
+      date: new Date(),
       cleanerName: "",
       site: "",
       cashAmount: 0,
@@ -191,10 +196,13 @@ export function DepositForm({ depositId }: DepositFormProps) {
                 toast({ variant: 'destructive', title: 'Error', description: 'Deposit not found.'});
                 router.push('/deposits');
             }
+        } else if (isMounted) {
+            // Only set default date after component is mounted to avoid hydration issues
+            form.setValue("date", new Date());
         }
     };
     fetchDeposit();
-  }, [depositId, form, router, toast]);
+  }, [depositId, form, router, toast, isMounted]);
 
 
   async function onSubmit(values: FormValues) {
