@@ -137,10 +137,10 @@ export function DepositsClient() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onSelect={() => handleEdit(deposit)}>
+                          <DropdownMenuItem onClick={() => handleEdit(deposit)}>
                             Edit
                           </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => handleDelete(deposit)} className="text-destructive">
+                          <DropdownMenuItem onClick={() => handleDelete(deposit)} className="text-destructive">
                             Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>

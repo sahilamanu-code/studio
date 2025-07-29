@@ -102,10 +102,10 @@ export function CollectionsClient() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onSelect={() => handleEdit(collection)}>
+                          <DropdownMenuItem onClick={() => handleEdit(collection)}>
                             Edit
                           </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => handleDelete(collection.id)} className="text-destructive">
+                          <DropdownMenuItem onClick={() => handleDelete(collection.id)} className="text-destructive">
                             Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>
