@@ -44,8 +44,12 @@ export function DepositsClient() {
         try {
             await deleteDoc(doc(db, "deposits", deposit.id));
             if (deposit.depositSlip) {
-              const slipRef = ref(storage, deposit.depositSlip);
-              await deleteObject(slipRef).catch(err => console.error("Error deleting slip image: ", err));
+              try {
+                const slipRef = ref(storage, deposit.depositSlip);
+                await deleteObject(slipRef);
+              } catch (err) {
+                 console.error("Error deleting slip image: ", err)
+              }
             }
             toast({ title: "Success", description: "Deposit deleted." });
         } catch (error) {
@@ -83,9 +87,8 @@ export function DepositsClient() {
           const slipRef = ref(storage, slipUrl);
           return deleteObject(slipRef);
         } catch (e) {
-          // This can happen if the URL is invalid or points to a non-existent object
           console.error(`Could not create storage reference for slip: ${slipUrl}`, e);
-          return Promise.resolve(); // Resolve to not break Promise.allSettled
+          return Promise.resolve();
         }
       });
       
