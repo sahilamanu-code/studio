@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PlusCircle, MoreHorizontal, Trash2, Loader2 } from "lucide-react";
+import { PlusCircle, MoreHorizontal, Trash2, Loader2, Download } from "lucide-react";
 import { CollectionForm } from "./collection-form";
 import {
   DropdownMenu,
@@ -21,6 +21,22 @@ import { db } from "@/lib/firebase";
 import { Skeleton } from "./ui/skeleton";
 import { Checkbox } from "./ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+import { DatePicker } from "./ui/date-picker";
+
+function convertToCSV(data: Collection[]) {
+    const headers = ["Date", "Cleaner Name", "Site", "Amount", "Notes"];
+    const rows = data.map(item => 
+        [
+            format(new Date(item.date), 'yyyy-MM-dd'),
+            `"${item.cleanerName.replace(/"/g, '""')}"`,
+            `"${item.site.replace(/"/g, '""')}"`,
+            item.amount,
+            `"${item.notes?.replace(/"/g, '""') || ''}"`
+        ].join(',')
+    );
+    return [headers.join(','), ...rows].join('\n');
+}
+
 
 export function CollectionsClient() {
   const { data: collections, loading } = useFirestoreCollection<Collection>("collections", {field: "date", direction: "desc"});
@@ -29,6 +45,8 @@ export function CollectionsClient() {
   const [selectedCollection, setSelectedCollection] = useState<Collection | undefined>(undefined);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [exportFromDate, setExportFromDate] = useState<Date | undefined>();
+  const [exportToDate, setExportToDate] = useState<Date | undefined>();
 
 
   const handleAdd = () => {
@@ -77,6 +95,51 @@ export function CollectionsClient() {
     }
   }
 
+  const handleExport = () => {
+    if (!exportFromDate || !exportToDate) {
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Please select both a 'From' and 'To' date for the export.",
+        });
+        return;
+    }
+    if (exportFromDate > exportToDate) {
+         toast({
+            variant: "destructive",
+            title: "Error",
+            description: "'From' date cannot be after 'To' date.",
+        });
+        return;
+    }
+
+    const filteredData = collections.filter(c => {
+        const collectionDate = new Date(c.date);
+        return collectionDate >= exportFromDate && collectionDate <= exportToDate;
+    });
+
+    if (filteredData.length === 0) {
+        toast({
+            title: "No Data",
+            description: "No collections found in the selected date range.",
+        });
+        return;
+    }
+
+    const csvData = convertToCSV(filteredData);
+    const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    if (link.href) {
+        URL.revokeObjectURL(link.href);
+    }
+    const url = URL.createObjectURL(blob);
+    link.href = url;
+    link.setAttribute('download', `collections-export-${format(exportFromDate, 'yyyy-MM-dd')}-to-${format(exportToDate, 'yyyy-MM-dd')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   }
@@ -113,6 +176,26 @@ export function CollectionsClient() {
         setIsOpen={setDialogOpen}
         collection={selectedCollection}
       />
+      <Card className="mb-8">
+        <CardHeader>
+            <CardTitle>Export Collections</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col sm:flex-row items-center gap-4">
+            <div className="grid gap-2 w-full sm:w-auto">
+                <label htmlFor="from-date" className="text-sm font-medium">From</label>
+                <DatePicker date={exportFromDate} setDate={setExportFromDate} />
+            </div>
+            <div className="grid gap-2 w-full sm:w-auto">
+                <label htmlFor="to-date" className="text-sm font-medium">To</label>
+                <DatePicker date={exportToDate} setDate={setExportToDate} />
+            </div>
+            <Button onClick={handleExport} className="w-full sm:w-auto sm:self-end">
+                <Download className="mr-2 h-4 w-4" />
+                Export to CSV
+            </Button>
+        </CardContent>
+      </Card>
+
 
       <Card>
         <CardHeader>
