@@ -5,16 +5,30 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import type { PendingItem } from "@/lib/types";
+import type { PendingItem, Collection, Deposit } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload } from "lucide-react";
-import { writeBatch, doc, collection } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { Loader2, Upload, Trash2 } from "lucide-react";
+import { writeBatch, doc, collection, getDocs, query, where } from "firebase/firestore";
+import { db, storage } from "@/lib/firebase";
+import { subDays } from "date-fns";
+import { deleteObject, ref } from "firebase/storage";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 export function ImportClient() {
   const [pastedData, setPastedData] = useState("");
   const { toast } = useToast();
   const [isImporting, setIsImporting] = useState(false);
+  const [isPurging, setIsPurging] = useState(false);
 
   const handleParseData = async () => {
     setIsImporting(true);
@@ -110,40 +124,140 @@ export function ImportClient() {
     setIsImporting(false);
   };
 
+  const handlePurge = async () => {
+    setIsPurging(true);
+    try {
+      const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
+      let deletedCount = 0;
+      const slipsToDelete: string[] = [];
+
+      // Purge collections
+      const collectionsQuery = query(collection(db, "collections"), where("date", "<=", thirtyDaysAgo));
+      const collectionsSnapshot = await getDocs(collectionsQuery);
+      const collectionsBatch = writeBatch(db);
+      collectionsSnapshot.forEach(doc => {
+        collectionsBatch.delete(doc.ref);
+        deletedCount++;
+      });
+      await collectionsBatch.commit();
+      
+      // Purge deposits
+      const depositsQuery = query(collection(db, "deposits"), where("date", "<=", thirtyDaysAgo));
+      const depositsSnapshot = await getDocs(depositsQuery);
+      const depositsBatch = writeBatch(db);
+      depositsSnapshot.forEach(doc => {
+        const depositData = doc.data() as Deposit;
+        if (depositData.depositSlip) {
+            slipsToDelete.push(depositData.depositSlip);
+        }
+        depositsBatch.delete(doc.ref);
+        deletedCount++;
+      });
+      await depositsBatch.commit();
+      
+      // Delete slips from storage
+       const deletePromises = slipsToDelete.map(slipUrl => {
+        try {
+          const slipRef = ref(storage, slipUrl);
+          return deleteObject(slipRef);
+        } catch (e) {
+          console.error(`Could not create storage reference for slip: ${slipUrl}`, e);
+          return Promise.resolve();
+        }
+      });
+      
+      await Promise.allSettled(deletePromises);
+
+      toast({
+        title: "Purge Successful",
+        description: `Successfully deleted ${deletedCount} record(s) older than 30 days.`,
+      });
+
+    } catch (error) {
+      console.error("Error purging data:", error);
+      toast({
+        variant: "destructive",
+        title: "Purge Failed",
+        description: "An error occurred while purging old data.",
+      });
+    } finally {
+      setIsPurging(false);
+    }
+  };
+
+
   return (
     <>
       <PageHeader
-        title="Import Pending List"
-        description="Paste data from a CSV or Excel file to quickly add pending collections."
+        title="Import & Manage Data"
+        description="Paste data to add pending collections or manage existing records."
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Paste Data</CardTitle>
-          <CardDescription>
-            Paste your data below, including the header row. The app will attempt to parse it automatically.
-            Required columns: 'Cleaner Name', 'Site Name', 'Plate', 'Contract Amount Cash'.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Textarea
-            value={pastedData}
-            onChange={(e) => setPastedData(e.target.value)}
-            placeholder="SL NO,CONTRACT NO,PLATE,..."
-            rows={10}
-            className="font-mono text-xs"
-            disabled={isImporting}
-          />
-          <Button onClick={handleParseData} disabled={!pastedData.trim() || isImporting}>
-            {isImporting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="mr-2 h-4 w-4" />
-            )}
-            {isImporting ? "Importing..." : "Parse and Import Data"}
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="grid md:grid-cols-2 gap-8">
+        <Card>
+            <CardHeader>
+            <CardTitle>Paste Data</CardTitle>
+            <CardDescription>
+                Paste your data below, including the header row. The app will attempt to parse it automatically.
+                Required columns: 'Cleaner Name', 'Site Name', 'Plate', 'Contract Amount Cash'.
+            </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+            <Textarea
+                value={pastedData}
+                onChange={(e) => setPastedData(e.target.value)}
+                placeholder="SL NO,CONTRACT NO,PLATE,..."
+                rows={10}
+                className="font-mono text-xs"
+                disabled={isImporting}
+            />
+            <Button onClick={handleParseData} disabled={!pastedData.trim() || isImporting}>
+                {isImporting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                <Upload className="mr-2 h-4 w-4" />
+                )}
+                {isImporting ? "Importing..." : "Parse and Import Data"}
+            </Button>
+            </CardContent>
+        </Card>
+        <Card>
+            <CardHeader>
+                <CardTitle>Data Management</CardTitle>
+                 <CardDescription>
+                    Free up space by deleting old records. This action cannot be undone. 
+                    It is recommended to export your data first.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                 <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                       <Button variant="destructive" disabled={isPurging}>
+                            {isPurging ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            )}
+                            {isPurging ? "Purging..." : "Purge Old Data"}
+                        </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action will permanently delete all collection and deposit records older than 30 days, including any attached deposit slips. 
+                            This cannot be undone.
+                        </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handlePurge}>Continue</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            </CardContent>
+        </Card>
+      </div>
     </>
   );
 }
