@@ -43,7 +43,13 @@ export function CollectionsClient() {
   
   const handleDelete = async (id: string) => {
     if (confirm("Are you sure you want to delete this collection?")) {
-        await deleteDoc(doc(db, "collections", id));
+        try {
+            await deleteDoc(doc(db, "collections", id));
+            toast({ title: "Success", description: "Collection deleted." });
+        } catch (error) {
+            console.error("Error deleting collection:", error);
+            toast({ variant: "destructive", title: "Error", description: "Could not delete collection." });
+        }
     }
   }
 
@@ -56,10 +62,17 @@ export function CollectionsClient() {
             const docRef = doc(db, "collections", id);
             batch.delete(docRef);
         });
-        await batch.commit();
-        setSelectedIds([]);
-        setIsDeleting(false);
-        toast({ title: "Success", description: `${selectedIds.length} collections deleted.` });
+        
+        try {
+            await batch.commit();
+            setSelectedIds([]);
+            toast({ title: "Success", description: `${selectedIds.length} collections deleted.` });
+        } catch (error) {
+            console.error("Error deleting collections:", error);
+            toast({ variant: "destructive", title: "Error", description: "Could not delete selected collections." });
+        } finally {
+            setIsDeleting(false);
+        }
     }
   }
 
@@ -68,9 +81,9 @@ export function CollectionsClient() {
   }
 
   const toggleSelectAll = () => {
-    if (selectedIds.length === collections.length) {
+    if (collections && collections.length > 0 && selectedIds.length === collections.length) {
       setSelectedIds([]);
-    } else {
+    } else if (collections) {
       setSelectedIds(collections.map(c => c.id));
     }
   }
@@ -111,9 +124,10 @@ export function CollectionsClient() {
               <TableRow>
                 <TableHead className="w-10">
                    <Checkbox 
-                    checked={collections.length > 0 && selectedIds.length === collections.length}
+                    checked={collections && collections.length > 0 && selectedIds.length === collections.length}
                     onCheckedChange={toggleSelectAll}
                     aria-label="Select all"
+                    disabled={!collections || collections.length === 0}
                   />
                 </TableHead>
                 <TableHead>Date</TableHead>
@@ -135,9 +149,9 @@ export function CollectionsClient() {
                     <TableCell><Skeleton className="h-8 w-8" /></TableCell>
                   </TableRow>
                 ))
-              ) : collections.length > 0 ? (
+              ) : collections && collections.length > 0 ? (
                 collections.map((collection) => (
-                  <TableRow key={collection.id} data-state={selectedIds.includes(collection.id) && "selected"}>
+                  <TableRow key={collection.id} data-state={selectedIds.includes(collection.id) ? "selected" : ""}>
                     <TableCell>
                       <Checkbox
                         checked={selectedIds.includes(collection.id)}
@@ -161,7 +175,7 @@ export function CollectionsClient() {
                           <DropdownMenuItem onClick={() => handleEdit(collection)}>
                             Edit
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDelete(collection.id)} className="text-destructive">
+                          <DropdownMenuItem onClick={() => handleDelete(collection.id)} className="text-destructive focus:text-destructive">
                             Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>

@@ -29,7 +29,7 @@ import { Card, CardContent } from "./ui/card";
 import { Banknote, CreditCard, Paperclip, X, Loader2 } from "lucide-react";
 import Image from 'next/image';
 import { useFirestoreCollection } from "@/hooks/use-firestore-collection";
-import { addDoc, collection as firestoreCollection, doc, updateDoc, writeBatch, getDoc } from "firebase/firestore";
+import { addDoc, collection as firestoreCollection, doc, updateDoc, setDoc, getDoc } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { getDownloadURL, ref, uploadString, deleteObject } from "firebase/storage";
 import { useRouter } from "next/navigation";
@@ -43,7 +43,6 @@ const formSchema = z.object({
   cashAmount: z.coerce.number().min(0).default(0),
   cardAmount: z.coerce.number().min(0).default(0),
   authCode: z.string().optional(),
-  depositSlip: z.string().optional(),
   depositSlipPreview: z.string().optional(),
 }).refine(data => data.cashAmount > 0 || data.cardAmount > 0, {
   message: "At least one amount (cash or card) must be greater than 0.",
@@ -129,7 +128,6 @@ export function DepositForm({ depositId }: DepositFormProps) {
       cashAmount: 0,
       cardAmount: 0,
       authCode: "",
-      depositSlip: "",
       depositSlipPreview: "",
     },
   });
@@ -144,7 +142,7 @@ export function DepositForm({ depositId }: DepositFormProps) {
       const reader = new FileReader();
       reader.onloadend = () => {
         const dataUrl = reader.result as string;
-        form.setValue("depositSlipPreview", dataUrl);
+        form.setValue("depositSlipPreview", dataUrl, { shouldValidate: true });
       };
       reader.readAsDataURL(file);
     }
@@ -152,7 +150,6 @@ export function DepositForm({ depositId }: DepositFormProps) {
   
   const clearImage = () => {
       form.setValue("depositSlipPreview", undefined);
-      form.setValue("depositSlip", undefined);
       if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -160,14 +157,14 @@ export function DepositForm({ depositId }: DepositFormProps) {
     if (selectedCleanerName) {
       const summary = cleanerSummaries.find(s => s.name === selectedCleanerName);
       let effectiveCashInHand = summary?.cashInHand ?? 0;
-      if (initialDeposit && initialDeposit.cleanerName === selectedCleanerName) {
+      if (depositId && initialDeposit && initialDeposit.cleanerName === selectedCleanerName) {
          effectiveCashInHand += initialDeposit.totalAmount;
       }
       setCashInHand(effectiveCashInHand);
     } else {
       setCashInHand(null);
     }
-  }, [selectedCleanerName, cleanerSummaries, initialDeposit]);
+  }, [selectedCleanerName, cleanerSummaries, initialDeposit, depositId]);
 
 
   useEffect(() => {
@@ -202,12 +199,14 @@ export function DepositForm({ depositId }: DepositFormProps) {
         const docId = depositId || doc(firestoreCollection(db, "deposits")).id;
         let fileUrl = initialDeposit?.depositSlip || "";
 
-        if (values.depositSlipPreview && values.depositSlipPreview !== initialDeposit?.depositSlip) {
+        // If there's a new preview image (it's a data URL) and it's different from the initial one
+        if (values.depositSlipPreview && values.depositSlipPreview.startsWith('data:')) {
              const storageRef = ref(storage, `depositSlips/${docId}`);
              await uploadString(storageRef, values.depositSlipPreview, 'data_url');
              fileUrl = await getDownloadURL(storageRef);
         } else if (!values.depositSlipPreview && initialDeposit?.depositSlip) {
-            const storageRef = ref(storage, `depositSlips/${docId}`);
+             // If preview is gone and there was an initial image, delete it from storage
+            const storageRef = ref(storage, initialDeposit.depositSlip);
             await deleteObject(storageRef).catch(err => console.log("No image to delete or error:", err));
             fileUrl = "";
         }
@@ -225,13 +224,10 @@ export function DepositForm({ depositId }: DepositFormProps) {
             authCode: values.authCode,
         };
 
-        if (depositId) {
-            await updateDoc(doc(db, "deposits", docId), depositData);
-            toast({ title: "Success", description: "Deposit updated successfully." });
-        } else {
-            await addDoc(firestoreCollection(db, "deposits"), depositData);
-            toast({ title: "Success", description: "Deposit recorded successfully." });
-        }
+        const docRef = doc(db, "deposits", docId);
+        await setDoc(docRef, depositData); // use setDoc to either create or update
+
+        toast({ title: "Success", description: `Deposit ${depositId ? 'updated' : 'recorded'} successfully.` });
         router.push("/deposits");
 
     } catch (error) {
@@ -271,7 +267,7 @@ export function DepositForm({ depositId }: DepositFormProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Cleaner Name</FormLabel>
-                   <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a cleaner" />
@@ -301,7 +297,7 @@ export function DepositForm({ depositId }: DepositFormProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Site</FormLabel>
-                   <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a site" />

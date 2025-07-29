@@ -41,11 +41,17 @@ export function DepositsClient() {
 
   const handleDelete = async (deposit: Deposit) => {
     if (confirm("Are you sure you want to delete this deposit record?")) {
-        if (deposit.depositSlip) {
-          const slipRef = ref(storage, `depositSlips/${deposit.id}`);
-          await deleteObject(slipRef).catch(err => console.error("Error deleting slip image: ", err));
+        try {
+            if (deposit.depositSlip) {
+              const slipRef = ref(storage, deposit.depositSlip);
+              await deleteObject(slipRef).catch(err => console.error("Error deleting slip image: ", err));
+            }
+            await deleteDoc(doc(db, "deposits", deposit.id));
+            toast({ title: "Success", description: "Deposit deleted." });
+        } catch (error) {
+            console.error("Error deleting deposit:", error);
+            toast({ variant: "destructive", title: "Error", description: "Could not delete deposit." });
         }
-        await deleteDoc(doc(db, "deposits", deposit.id));
     }
   }
 
@@ -62,7 +68,7 @@ export function DepositsClient() {
                 const docRef = doc(db, "deposits", id);
                 batch.delete(docRef);
                 if (deposit.depositSlip) {
-                    slipsToDelete.push(deposit.id);
+                    slipsToDelete.push(deposit.depositSlip);
                 }
             }
         });
@@ -70,12 +76,12 @@ export function DepositsClient() {
         try {
             await batch.commit();
             
-            // Delete associated storage files
-            const deletePromises = slipsToDelete.map(id => {
-                const slipRef = ref(storage, `depositSlips/${id}`);
+            const deletePromises = slipsToDelete.map(slipUrl => {
+                const slipRef = ref(storage, slipUrl);
                 return deleteObject(slipRef);
             });
-            await Promise.allSettled(deletePromises);
+
+            await Promise.allSettled(deletePromises.map(p => p.catch(e => console.error("Error deleting a slip:", e))));
             
             setSelectedIds([]);
             toast({ title: "Success", description: `${selectedIds.length} deposits deleted.` });
@@ -93,9 +99,9 @@ export function DepositsClient() {
   }
 
   const toggleSelectAll = () => {
-    if (selectedIds.length === deposits.length) {
+    if (deposits && deposits.length > 0 && selectedIds.length === deposits.length) {
       setSelectedIds([]);
-    } else {
+    } else if (deposits) {
       setSelectedIds(deposits.map(d => d.id));
     }
   }
@@ -132,9 +138,10 @@ export function DepositsClient() {
               <TableRow>
                 <TableHead className="w-10">
                    <Checkbox 
-                    checked={deposits.length > 0 && selectedIds.length === deposits.length}
+                    checked={deposits && deposits.length > 0 && selectedIds.length === deposits.length}
                     onCheckedChange={toggleSelectAll}
                     aria-label="Select all"
+                    disabled={!deposits || deposits.length === 0}
                    />
                 </TableHead>
                 <TableHead>Date</TableHead>
@@ -160,9 +167,9 @@ export function DepositsClient() {
                     <TableCell><Skeleton className="h-8 w-8" /></TableCell>
                   </TableRow>
                 ))
-              ) : deposits.length > 0 ? (
+              ) : deposits && deposits.length > 0 ? (
                 deposits.map((deposit) => (
-                  <TableRow key={deposit.id} data-state={selectedIds.includes(deposit.id) && "selected"}>
+                  <TableRow key={deposit.id} data-state={selectedIds.includes(deposit.id) ? "selected" : ""}>
                     <TableCell>
                       <Checkbox
                         checked={selectedIds.includes(deposit.id)}
@@ -210,7 +217,7 @@ export function DepositsClient() {
                           <DropdownMenuItem onClick={() => handleEdit(deposit.id)}>
                             Edit
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDelete(deposit)} className="text-destructive">
+                          <DropdownMenuItem onClick={() => handleDelete(deposit)} className="text-destructive focus:text-destructive">
                             Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>
