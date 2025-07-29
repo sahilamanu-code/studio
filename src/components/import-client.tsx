@@ -24,6 +24,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Separator } from "./ui/separator";
+import { buttonVariants } from "./ui/button";
 
 export function ImportClient() {
   const [pastedData, setPastedData] = useState("");

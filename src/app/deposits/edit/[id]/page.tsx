@@ -1,5 +1,3 @@
-"use client";
-
 import { DepositForm } from "@/components/deposit-form";
 
 type EditDepositPageProps = {
