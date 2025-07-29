@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PlusCircle, MoreHorizontal } from "lucide-react";
+import { PlusCircle, MoreHorizontal, Trash2, Loader2 } from "lucide-react";
 import { CollectionForm } from "./collection-form";
 import {
   DropdownMenu,
@@ -16,14 +16,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
-import { doc, deleteDoc } from "firebase/firestore";
+import { doc, deleteDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Skeleton } from "./ui/skeleton";
+import { Checkbox } from "./ui/checkbox";
+import { useToast } from "@/hooks/use-toast";
 
 export function CollectionsClient() {
   const { data: collections, loading } = useFirestoreCollection<Collection>("collections", {field: "date", direction: "desc"});
+  const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState<Collection | undefined>(undefined);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
+
 
   const handleAdd = () => {
     setSelectedCollection(undefined);
@@ -41,6 +47,34 @@ export function CollectionsClient() {
     }
   }
 
+  const handleDeleteSelected = async () => {
+    if (selectedIds.length === 0) return;
+    if (confirm(`Are you sure you want to delete ${selectedIds.length} selected item(s)?`)) {
+        setIsDeleting(true);
+        const batch = writeBatch(db);
+        selectedIds.forEach(id => {
+            const docRef = doc(db, "collections", id);
+            batch.delete(docRef);
+        });
+        await batch.commit();
+        setSelectedIds([]);
+        setIsDeleting(false);
+        toast({ title: "Success", description: `${selectedIds.length} collections deleted.` });
+    }
+  }
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === collections.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(collections.map(c => c.id));
+    }
+  }
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED' }).format(amount);
   };
@@ -48,10 +82,17 @@ export function CollectionsClient() {
   return (
     <>
       <PageHeader title="Cash Collections" description="Log all daily cash collections from cleaners.">
-        <Button onClick={handleAdd}>
-          <PlusCircle className="mr-2 h-4 w-4" />
-          Add Collection
-        </Button>
+        {selectedIds.length > 0 ? (
+          <Button variant="destructive" onClick={handleDeleteSelected} disabled={isDeleting}>
+            {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+            Delete ({selectedIds.length})
+          </Button>
+        ) : (
+          <Button onClick={handleAdd}>
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Add Collection
+          </Button>
+        )}
       </PageHeader>
 
       <CollectionForm
@@ -68,6 +109,13 @@ export function CollectionsClient() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                   <Checkbox 
+                    checked={collections.length > 0 && selectedIds.length === collections.length}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Select all"
+                  />
+                </TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Cleaner</TableHead>
                 <TableHead>Site</TableHead>
@@ -79,6 +127,7 @@ export function CollectionsClient() {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
+                    <TableCell><Skeleton className="h-5 w-5" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-20" /></TableCell>
@@ -88,7 +137,14 @@ export function CollectionsClient() {
                 ))
               ) : collections.length > 0 ? (
                 collections.map((collection) => (
-                  <TableRow key={collection.id}>
+                  <TableRow key={collection.id} data-state={selectedIds.includes(collection.id) && "selected"}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedIds.includes(collection.id)}
+                        onCheckedChange={() => toggleSelect(collection.id)}
+                        aria-label="Select row"
+                      />
+                    </TableCell>
                     <TableCell>{format(new Date(collection.date), 'PPP')}</TableCell>
                     <TableCell className="font-medium">{collection.cleanerName}</TableCell>
                     <TableCell>{collection.site}</TableCell>
@@ -115,7 +171,7 @@ export function CollectionsClient() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
+                  <TableCell colSpan={6} className="h-24 text-center">
                     No collections recorded yet.
                   </TableCell>
                 </TableRow>

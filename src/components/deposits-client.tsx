@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PlusCircle, MoreHorizontal } from "lucide-react";
+import { PlusCircle, MoreHorizontal, Trash2, Loader2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,16 +17,23 @@ import {
 import { format } from "date-fns";
 import Image from "next/image";
 import Link from "next/link";
-import { doc, deleteDoc } from "firebase/firestore";
+import { doc, deleteDoc, writeBatch } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { deleteObject, ref } from "firebase/storage";
 import { Skeleton } from "./ui/skeleton";
 import { Badge } from "./ui/badge";
 import { useRouter } from "next/navigation";
+import { Checkbox } from "./ui/checkbox";
+import { useToast } from "@/hooks/use-toast";
+
 
 export function DepositsClient() {
   const { data: deposits, loading } = useFirestoreCollection<Deposit>("deposits", {field: "date", direction: "desc"});
   const router = useRouter();
+  const { toast } = useToast();
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
+
 
   const handleEdit = (depositId: string) => {
     router.push(`/deposits/edit/${depositId}`);
@@ -42,6 +49,57 @@ export function DepositsClient() {
     }
   }
 
+  const handleDeleteSelected = async () => {
+    if (selectedIds.length === 0) return;
+    if (confirm(`Are you sure you want to delete ${selectedIds.length} selected item(s)?`)) {
+        setIsDeleting(true);
+        const batch = writeBatch(db);
+        const slipsToDelete: string[] = [];
+
+        selectedIds.forEach(id => {
+            const deposit = deposits.find(d => d.id === id);
+            if (deposit) {
+                const docRef = doc(db, "deposits", id);
+                batch.delete(docRef);
+                if (deposit.depositSlip) {
+                    slipsToDelete.push(deposit.id);
+                }
+            }
+        });
+
+        try {
+            await batch.commit();
+            
+            // Delete associated storage files
+            const deletePromises = slipsToDelete.map(id => {
+                const slipRef = ref(storage, `depositSlips/${id}`);
+                return deleteObject(slipRef);
+            });
+            await Promise.allSettled(deletePromises);
+            
+            setSelectedIds([]);
+            toast({ title: "Success", description: `${selectedIds.length} deposits deleted.` });
+        } catch (error) {
+            console.error("Error deleting deposits: ", error);
+            toast({ variant: "destructive", title: "Error", description: "Could not delete selected deposits." });
+        } finally {
+            setIsDeleting(false);
+        }
+    }
+  }
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === deposits.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(deposits.map(d => d.id));
+    }
+  }
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED' }).format(amount);
   };
@@ -49,12 +107,19 @@ export function DepositsClient() {
   return (
     <>
       <PageHeader title="Bank Deposits" description="Record all bank deposits made.">
-        <Button asChild>
-          <Link href="/deposits/new">
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Record Deposit
-          </Link>
-        </Button>
+        {selectedIds.length > 0 ? (
+          <Button variant="destructive" onClick={handleDeleteSelected} disabled={isDeleting}>
+            {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+            Delete ({selectedIds.length})
+          </Button>
+        ) : (
+          <Button asChild>
+            <Link href="/deposits/new">
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Record Deposit
+            </Link>
+          </Button>
+        )}
       </PageHeader>
 
       <Card>
@@ -65,6 +130,13 @@ export function DepositsClient() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                   <Checkbox 
+                    checked={deposits.length > 0 && selectedIds.length === deposits.length}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Select all"
+                   />
+                </TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Cleaner</TableHead>
                 <TableHead>Site</TableHead>
@@ -78,6 +150,7 @@ export function DepositsClient() {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                    <TableRow key={i}>
+                    <TableCell><Skeleton className="h-5 w-5" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-20" /></TableCell>
@@ -89,7 +162,14 @@ export function DepositsClient() {
                 ))
               ) : deposits.length > 0 ? (
                 deposits.map((deposit) => (
-                  <TableRow key={deposit.id}>
+                  <TableRow key={deposit.id} data-state={selectedIds.includes(deposit.id) && "selected"}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedIds.includes(deposit.id)}
+                        onCheckedChange={() => toggleSelect(deposit.id)}
+                        aria-label="Select row"
+                      />
+                    </TableCell>
                     <TableCell>{format(new Date(deposit.date), 'PPP')}</TableCell>
                     <TableCell className="font-medium">{deposit.cleanerName}</TableCell>
                     <TableCell>{deposit.site}</TableCell>
@@ -140,7 +220,7 @@ export function DepositsClient() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center">
+                  <TableCell colSpan={8} className="h-24 text-center">
                     No deposits recorded yet.
                   </TableCell>
                 </TableRow>
