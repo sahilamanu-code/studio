@@ -69,6 +69,7 @@ export function DepositsClient() {
               <TableRow>
                 <TableHead>Date</TableHead>
                 <TableHead>Cleaner</TableHead>
+                <TableHead>Site</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead><span className="sr-only">Actions</span></TableHead>
               </TableRow>
@@ -79,6 +80,7 @@ export function DepositsClient() {
                   <TableRow key={deposit.id}>
                     <TableCell>{format(new Date(deposit.date), 'PPP')}</TableCell>
                     <TableCell className="font-medium">{deposit.cleanerName}</TableCell>
+                    <TableCell>{deposit.site}</TableCell>
                     <TableCell className="text-right font-mono">{formatCurrency(deposit.amount)}</TableCell>
                     <TableCell>
                        <DropdownMenu>
@@ -102,7 +104,7 @@ export function DepositsClient() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-24 text-center">
+                  <TableCell colSpan={5} className="h-24 text-center">
                     No deposits recorded yet.
                   </TableCell>
                 </TableRow>

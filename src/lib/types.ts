@@ -11,6 +11,7 @@ export interface Collection {
 export interface Deposit {
   id: string;
   cleanerName: string; 
+  site: string;
   date: string; // ISO string
   amount: number;
   depositSlip?: string; // For MVP, we'll just store a note or filename.
