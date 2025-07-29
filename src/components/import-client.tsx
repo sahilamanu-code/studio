@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Textarea } from "@/components/ui/textarea";
 import type { PendingItem } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
-import { Upload } from "lucide-react";
-import { writeBatch, doc } from "firebase/firestore";
+import { Loader2, Upload } from "lucide-react";
+import { writeBatch, doc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export function ImportClient() {
@@ -44,14 +44,14 @@ export function ImportClient() {
        toast({
         variant: "destructive",
         title: "Import Failed",
-        description: "Could not find all required columns: Plate, Contract Amount Cash, Cleaner Name, Site Name. Please check the pasted data and ensure a header row is present.",
+        description: "Could not find all required columns: Plate, Contract Amount Cash, Cleaner Name, Site Name.",
       });
       setIsImporting(false);
       return;
     }
 
 
-    lines.forEach((line) => {
+    lines.forEach((line, index) => {
       if (line.trim() === '') return;
 
       const columns = line.split(/\t|,/); 
@@ -60,7 +60,8 @@ export function ImportClient() {
       const site = columns[siteNameIndex]?.trim();
       const carPlate = columns[plateIndex]?.trim();
       const amountStr = columns[amountIndex]?.trim();
-      const amount = amountStr ? parseFloat(amountStr) : NaN;
+      const amount = amountStr ? parseFloat(amountStr.replace(/[^0-9.-]+/g,"")) : NaN;
+
 
       if (cleanerName && site && carPlate && !isNaN(amount) && amount > 0) {
         newItems.push({
@@ -71,6 +72,7 @@ export function ImportClient() {
           date: new Date().toISOString(), 
         });
       } else {
+          console.log(`Skipping line ${index + 2}: Invalid data. Found: cleanerName='${cleanerName}', site='${site}', carPlate='${carPlate}', amount=${amount}`);
           errors++;
       }
     });
@@ -79,7 +81,8 @@ export function ImportClient() {
       try {
         const batch = writeBatch(db);
         newItems.forEach(item => {
-          const docRef = doc(db, "pendingItems", `pending-${Date.now()}-${Math.random()}`);
+          // Use a more robust unique ID for pending items
+          const docRef = doc(collection(db, "pendingItems"));
           batch.set(docRef, item);
         });
         await batch.commit();
@@ -128,11 +131,15 @@ export function ImportClient() {
             onChange={(e) => setPastedData(e.target.value)}
             placeholder="SL NO,CONTRACT NO,PLATE,..."
             rows={10}
-            className="font-mono"
+            className="font-mono text-xs"
             disabled={isImporting}
           />
           <Button onClick={handleParseData} disabled={!pastedData.trim() || isImporting}>
-            <Upload className="mr-2 h-4 w-4"/>
+            {isImporting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="mr-2 h-4 w-4" />
+            )}
             {isImporting ? "Importing..." : "Parse and Import Data"}
           </Button>
         </CardContent>
