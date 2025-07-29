@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { differenceInDays, parseISO } from "date-fns";
-import { AlertTriangle, TrendingUp } from "lucide-react";
+import { AlertTriangle, TrendingUp, Banknote } from "lucide-react";
 import { Skeleton } from "./ui/skeleton";
 import { useFirestoreCollection } from "@/hooks/use-firestore-collection";
 
@@ -61,6 +61,10 @@ export function DashboardClient() {
   const totalCashInHand = useMemo(() => {
     return cleanerSummaries.reduce((acc, summary) => acc + summary.cashInHand, 0);
   }, [cleanerSummaries]);
+
+  const totalDeposited = useMemo(() => {
+    return deposits.reduce((acc, deposit) => acc + deposit.totalAmount, 0);
+  }, [deposits]);
   
   const totalAlerts = useMemo(() => {
     return cleanerSummaries.filter(s => s.cashInHand > 5000 || (s.daysSinceLastCollection ?? 0) > 3).length
@@ -82,6 +86,16 @@ export function DashboardClient() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Cash In Hand</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-8 w-3/4" />
+            <Skeleton className="h-4 w-1/2 mt-1" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Deposited</CardTitle>
+            <Banknote className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <Skeleton className="h-8 w-3/4" />
@@ -130,6 +144,16 @@ export function DashboardClient() {
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(totalCashInHand)}</div>
             <p className="text-xs text-muted-foreground">Across all cleaners</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Deposited</CardTitle>
+            <Banknote className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(totalDeposited)}</div>
+            <p className="text-xs text-muted-foreground">Across all time</p>
           </CardContent>
         </Card>
         <Card>
