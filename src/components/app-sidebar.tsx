@@ -35,9 +35,11 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="p-4">
         <Link href="/" className="flex items-center gap-2.5">
-          <h1 className="text-xl font-bold font-headline text-sidebar-foreground">
-            Trie | Operations
-          </h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl font-bold font-headline text-sidebar-foreground">
+              Trie | Operations
+            </h1>
+          </div>
         </Link>
       </SidebarHeader>
       <SidebarContent>
