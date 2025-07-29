@@ -31,7 +31,7 @@ export function DepositsClient() {
   const { data: deposits, loading } = useFirestoreCollection<Deposit>("deposits", {field: "date", direction: "desc"});
   const router = useRouter();
   const { toast } = useToast();
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
 
 
@@ -60,7 +60,7 @@ export function DepositsClient() {
   }
 
   const handleDeleteSelected = async () => {
-    if (selectedIds.length === 0 || !confirm(`Are you sure you want to delete ${selectedIds.length} selected item(s)?`)) {
+    if (selectedIds.size === 0 || !confirm(`Are you sure you want to delete ${selectedIds.size} selected item(s)?`)) {
       return;
     }
     
@@ -68,15 +68,14 @@ export function DepositsClient() {
     const batch = writeBatch(db);
     const slipsToDelete: string[] = [];
 
-    selectedIds.forEach(id => {
-      const deposit = deposits.find(d => d.id === id);
-      if (deposit) {
-        const docRef = doc(db, "deposits", id);
+    const depositsToDelete = deposits.filter(d => selectedIds.has(d.id));
+
+    depositsToDelete.forEach(deposit => {
+        const docRef = doc(db, "deposits", deposit.id);
         batch.delete(docRef);
         if (deposit.depositSlip) {
           slipsToDelete.push(deposit.depositSlip);
         }
-      }
     });
 
     try {
@@ -94,8 +93,8 @@ export function DepositsClient() {
       
       await Promise.allSettled(deletePromises);
       
-      toast({ title: "Success", description: `${selectedIds.length} deposits deleted.` });
-      setSelectedIds([]);
+      toast({ title: "Success", description: `${selectedIds.size} deposits deleted.` });
+      setSelectedIds(new Set());
     } catch (error) {
       console.error("Error batch deleting deposits: ", error);
       toast({ variant: "destructive", title: "Error", description: "Could not delete selected deposits." });
@@ -105,16 +104,26 @@ export function DepositsClient() {
   }
 
   const toggleSelect = (id: string) => {
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
   }
 
   const toggleSelectAll = () => {
-    if (deposits && deposits.length > 0 && selectedIds.length === deposits.length) {
-      setSelectedIds([]);
+    if (deposits && deposits.length > 0 && selectedIds.size === deposits.length) {
+      setSelectedIds(new Set());
     } else if (deposits) {
-      setSelectedIds(deposits.map(d => d.id));
+      setSelectedIds(new Set(deposits.map(d => d.id)));
     }
   }
+  
+  const numSelected = selectedIds.size;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED' }).format(amount);
@@ -123,10 +132,10 @@ export function DepositsClient() {
   return (
     <>
       <PageHeader title="Bank Deposits" description="Record all bank deposits made.">
-        {selectedIds.length > 0 && (
+        {numSelected > 0 && (
           <Button variant="destructive" onClick={handleDeleteSelected} disabled={isDeleting}>
             {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-            Delete ({selectedIds.length})
+            Delete ({numSelected})
           </Button>
         )}
         <Button asChild>
@@ -147,7 +156,7 @@ export function DepositsClient() {
               <TableRow>
                 <TableHead className="w-10">
                    <Checkbox 
-                    checked={deposits && deposits.length > 0 && selectedIds.length === deposits.length}
+                    checked={deposits && deposits.length > 0 && numSelected === deposits.length}
                     onCheckedChange={toggleSelectAll}
                     aria-label="Select all"
                     disabled={!deposits || deposits.length === 0}
@@ -178,10 +187,10 @@ export function DepositsClient() {
                 ))
               ) : deposits && deposits.length > 0 ? (
                 deposits.map((deposit) => (
-                  <TableRow key={deposit.id} data-state={selectedIds.includes(deposit.id) ? "selected" : ""}>
+                  <TableRow key={deposit.id} data-state={selectedIds.has(deposit.id) ? "selected" : ""}>
                     <TableCell>
                       <Checkbox
-                        checked={selectedIds.includes(deposit.id)}
+                        checked={selectedIds.has(deposit.id)}
                         onCheckedChange={() => toggleSelect(deposit.id)}
                         aria-label="Select row"
                       />
@@ -248,3 +257,5 @@ export function DepositsClient() {
     </>
   );
 }
+
+    

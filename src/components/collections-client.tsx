@@ -43,7 +43,7 @@ export function CollectionsClient() {
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState<Collection | undefined>(undefined);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
   const [exportFromDate, setExportFromDate] = useState<Date | undefined>();
   const [exportToDate, setExportToDate] = useState<Date | undefined>();
@@ -72,7 +72,7 @@ export function CollectionsClient() {
   }
 
   const handleDeleteSelected = async () => {
-    if (selectedIds.length === 0 || !confirm(`Are you sure you want to delete ${selectedIds.length} selected item(s)?`)) {
+    if (selectedIds.size === 0 || !confirm(`Are you sure you want to delete ${selectedIds.size} selected item(s)?`)) {
       return;
     }
     
@@ -85,8 +85,8 @@ export function CollectionsClient() {
     
     try {
       await batch.commit();
-      toast({ title: "Success", description: `${selectedIds.length} collections deleted.` });
-      setSelectedIds([]);
+      toast({ title: "Success", description: `${selectedIds.size} collections deleted.` });
+      setSelectedIds(new Set());
     } catch (error) {
       console.error("Error deleting collections:", error);
       toast({ variant: "destructive", title: "Error", description: "Could not delete selected collections." });
@@ -141,16 +141,26 @@ export function CollectionsClient() {
   }
 
   const toggleSelect = (id: string) => {
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
   }
 
   const toggleSelectAll = () => {
-    if (collections && collections.length > 0 && selectedIds.length === collections.length) {
-      setSelectedIds([]);
+    if (collections && collections.length > 0 && selectedIds.size === collections.length) {
+      setSelectedIds(new Set());
     } else if (collections) {
-      setSelectedIds(collections.map(c => c.id));
+      setSelectedIds(new Set(collections.map(c => c.id)));
     }
   }
+  
+  const numSelected = selectedIds.size;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED' }).format(amount);
@@ -159,10 +169,10 @@ export function CollectionsClient() {
   return (
     <>
       <PageHeader title="Cash Collections" description="Log all daily cash collections from cleaners.">
-        {selectedIds.length > 0 && (
+        {numSelected > 0 && (
           <Button variant="destructive" onClick={handleDeleteSelected} disabled={isDeleting}>
             {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-            Delete ({selectedIds.length})
+            Delete ({numSelected})
           </Button>
         )}
         <Button onClick={handleAdd}>
@@ -207,7 +217,7 @@ export function CollectionsClient() {
               <TableRow>
                 <TableHead className="w-10">
                    <Checkbox 
-                    checked={collections && collections.length > 0 && selectedIds.length === collections.length}
+                    checked={collections && collections.length > 0 && numSelected === collections.length}
                     onCheckedChange={toggleSelectAll}
                     aria-label="Select all"
                     disabled={!collections || collections.length === 0}
@@ -234,10 +244,10 @@ export function CollectionsClient() {
                 ))
               ) : collections && collections.length > 0 ? (
                 collections.map((collection) => (
-                  <TableRow key={collection.id} data-state={selectedIds.includes(collection.id) ? "selected" : ""}>
+                  <TableRow key={collection.id} data-state={selectedIds.has(collection.id) ? "selected" : ""}>
                     <TableCell>
                       <Checkbox
-                        checked={selectedIds.includes(collection.id)}
+                        checked={selectedIds.has(collection.id)}
                         onCheckedChange={() => toggleSelect(collection.id)}
                         aria-label="Select row"
                       />
@@ -280,3 +290,5 @@ export function CollectionsClient() {
     </>
   );
 }
+
+    
