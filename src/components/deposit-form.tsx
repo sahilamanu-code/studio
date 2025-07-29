@@ -25,8 +25,8 @@ import { DatePicker } from "./ui/date-picker";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { differenceInDays, parseISO } from "date-fns";
-import { Card, CardContent } from "./ui/card";
-import { Banknote, CreditCard, Paperclip, X, Loader2 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Banknote, CreditCard, Paperclip, X, Loader2, CheckCircle } from "lucide-react";
 import Image from 'next/image';
 import { useFirestoreCollection } from "@/hooks/use-firestore-collection";
 import { addDoc, collection as firestoreCollection, doc, updateDoc, setDoc, getDoc } from "firebase/firestore";
@@ -50,6 +50,7 @@ const formSchema = z.object({
   path: ["cashAmount"],
 });
 
+type FormValues = z.infer<typeof formSchema>;
 
 type DepositFormProps = {
   depositId?: string;
@@ -65,6 +66,8 @@ export function DepositForm({ depositId }: DepositFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [initialDeposit, setInitialDeposit] = useState<Deposit | null>(null);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [submittedDeposit, setSubmittedDeposit] = useState<FormValues & { totalAmount: number } | null>(null);
 
   const allCollectionSources = useMemo(() => [...collections, ...pendingItems], [collections, pendingItems]);
 
@@ -120,7 +123,7 @@ export function DepositForm({ depositId }: DepositFormProps) {
     return new Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED' }).format(amount);
   };
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       date: new Date(),
@@ -194,7 +197,7 @@ export function DepositForm({ depositId }: DepositFormProps) {
   }, [depositId, form, router, toast]);
 
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: FormValues) {
     setIsSubmitting(true);
     try {
         const docId = depositId || doc(firestoreCollection(db, "deposits")).id;
@@ -225,12 +228,13 @@ export function DepositForm({ depositId }: DepositFormProps) {
 
         const docRef = doc(db, "deposits", docId);
         await setDoc(docRef, depositData); 
-
-        toast({ title: "Success", description: `Deposit ${depositId ? 'updated' : 'recorded'} successfully.` });
-        if(depositId) {
+        
+        if (depositId) {
+          toast({ title: "Success", description: "Deposit updated successfully." });
           router.push("/deposits");
         } else {
-          form.reset();
+          setSubmittedDeposit({ ...values, totalAmount });
+          setIsSuccess(true);
         }
 
     } catch (error) {
@@ -239,6 +243,72 @@ export function DepositForm({ depositId }: DepositFormProps) {
     } finally {
         setIsSubmitting(false);
     }
+  }
+
+  const recordAnother = () => {
+    setIsSuccess(false);
+    setSubmittedDeposit(null);
+    form.reset({
+      date: new Date(),
+      cleanerName: "",
+      site: "",
+      cashAmount: 0,
+      cardAmount: 0,
+      authCode: "",
+      depositSlipPreview: "",
+    });
+    setCashInHand(null);
+  };
+  
+  if (isSuccess && submittedDeposit) {
+    return (
+        <>
+            <PageHeader 
+                title="Deposit Recorded"
+                description="The deposit has been successfully added to the system."
+            />
+            <Card>
+                <CardContent className="p-6 flex flex-col items-center justify-center text-center">
+                    <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{
+                            type: "spring",
+                            stiffness: 260,
+                            damping: 20,
+                        }}
+                    >
+                        <CheckCircle className="h-20 w-20 text-green-500 mb-4" />
+                    </motion.div>
+                    <h2 className="text-2xl font-bold mb-2">Success!</h2>
+                    <Card className="w-full max-w-md my-4 text-left">
+                        <CardHeader>
+                            <CardTitle className="text-lg">Deposit Summary</CardTitle>
+                        </CardHeader>
+                        <CardContent className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                            <div className="text-muted-foreground">Cleaner:</div>
+                            <div className="font-medium">{submittedDeposit.cleanerName}</div>
+                            <div className="text-muted-foreground">Site:</div>
+                            <div className="font-medium">{submittedDeposit.site}</div>
+                            <div className="text-muted-foreground">Date:</div>
+                            <div className="font-medium">{submittedDeposit.date.toLocaleDateString()}</div>
+                             {submittedDeposit.cashAmount > 0 && <>
+                                <div className="text-muted-foreground">Cash Amount:</div>
+                                <div className="font-medium">{formatCurrency(submittedDeposit.cashAmount)}</div>
+                             </>}
+                             {submittedDeposit.cardAmount > 0 && <>
+                                <div className="text-muted-foreground">Card Amount:</div>
+                                <div className="font-medium">{formatCurrency(submittedDeposit.cardAmount)}</div>
+                             </>}
+                             <div className="text-muted-foreground font-bold border-t pt-2 mt-1">Total Amount:</div>
+                            <div className="font-bold border-t pt-2 mt-1">{formatCurrency(submittedDeposit.totalAmount)}</div>
+                        </CardContent>
+                    </Card>
+                    <Button onClick={recordAnother}>Record Another Deposit</Button>
+                </CardContent>
+            </Card>
+        </>
+    );
   }
 
   const cardVariants = {
