@@ -8,7 +8,7 @@ export interface Collection {
 }
 
 export interface Deposit {
-  id: string;
+  id:string;
   cleanerName: string; 
   site: string;
   date: string; // ISO string
@@ -16,6 +16,7 @@ export interface Deposit {
   cardAmount: number;
   totalAmount: number;
   depositSlip?: string; // URL for the image in Firebase Storage
+  authCode?: string;
 }
 
 export interface PendingItem {

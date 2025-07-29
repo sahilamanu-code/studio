@@ -21,6 +21,7 @@ import { doc, deleteDoc } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { deleteObject, ref } from "firebase/storage";
 import { Skeleton } from "./ui/skeleton";
+import { Badge } from "./ui/badge";
 
 export function DepositsClient() {
   const { data: deposits, loading } = useFirestoreCollection<Deposit>("deposits", {field: "date", direction: "desc"});
@@ -78,6 +79,7 @@ export function DepositsClient() {
                 <TableHead>Cleaner</TableHead>
                 <TableHead>Site</TableHead>
                 <TableHead>Slip</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead><span className="sr-only">Actions</span></TableHead>
               </TableRow>
@@ -90,6 +92,7 @@ export function DepositsClient() {
                     <TableCell><Skeleton className="h-5 w-32" /></TableCell>
                     <TableCell><Skeleton className="h-5 w-20" /></TableCell>
                     <TableCell><Skeleton className="h-10 w-10 rounded-md" /></TableCell>
+                    <TableCell><Skeleton className="h-6 w-16" /></TableCell>
                     <TableCell className="text-right"><Skeleton className="h-5 w-16 inline-block" /></TableCell>
                     <TableCell><Skeleton className="h-8 w-8" /></TableCell>
                   </TableRow>
@@ -107,7 +110,24 @@ export function DepositsClient() {
                         </a>
                       )}
                     </TableCell>
-                    <TableCell className="text-right font-mono">{formatCurrency(deposit.totalAmount)}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        {deposit.cashAmount > 0 && <Badge variant="secondary">Cash</Badge>}
+                        {deposit.cardAmount > 0 && <Badge variant="outline">Card</Badge>}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      <div className="flex flex-col items-end">
+                        {deposit.cashAmount > 0 && <span>{formatCurrency(deposit.cashAmount)}</span>}
+                        {deposit.cardAmount > 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            {formatCurrency(deposit.cardAmount)}
+                            {deposit.authCode && ` (${deposit.authCode})`}
+                          </span>
+                        )}
+                         <span className="font-bold border-t mt-1 pt-1">{formatCurrency(deposit.totalAmount)}</span>
+                      </div>
+                    </TableCell>
                     <TableCell>
                        <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -130,7 +150,7 @@ export function DepositsClient() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">
+                  <TableCell colSpan={7} className="h-24 text-center">
                     No deposits recorded yet.
                   </TableCell>
                 </TableRow>

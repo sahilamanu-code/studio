@@ -40,7 +40,6 @@ import { useFirestoreCollection } from "@/hooks/use-firestore-collection";
 import { addDoc, collection as firestoreCollection, doc, updateDoc, writeBatch } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { getDownloadURL, ref, uploadString, deleteObject } from "firebase/storage";
-import { set } from "date-fns";
 
 
 const formSchema = z.object({
@@ -49,6 +48,7 @@ const formSchema = z.object({
   site: z.string().min(1, "Please select a site."),
   cashAmount: z.coerce.number().min(0).default(0),
   cardAmount: z.coerce.number().min(0).default(0),
+  authCode: z.string().optional(),
   depositSlip: z.string().optional(), // This will now hold the image URL from storage
   depositSlipPreview: z.string().optional(), // For local preview before upload
 }).refine(data => data.cashAmount > 0 || data.cardAmount > 0, {
@@ -133,11 +133,13 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
       site: "",
       cashAmount: 0,
       cardAmount: 0,
+      authCode: "",
     },
   });
   
   const selectedCleanerName = form.watch("cleanerName");
   const depositSlipPreview = form.watch("depositSlipPreview");
+  const cardAmount = form.watch("cardAmount");
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -177,6 +179,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
         ...deposit,
         cashAmount: deposit.cashAmount || 0,
         cardAmount: deposit.cardAmount || 0,
+        authCode: deposit.authCode || "",
         date: new Date(deposit.date),
         depositSlipPreview: deposit.depositSlip,
       });
@@ -187,6 +190,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
         site: "",
         cashAmount: 0,
         cardAmount: 0,
+        authCode: "",
         depositSlip: "",
         depositSlipPreview: "",
       });
@@ -225,6 +229,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
             cardAmount: values.cardAmount,
             totalAmount,
             depositSlip: fileUrl,
+            authCode: values.authCode,
         };
 
         if (deposit) {
@@ -354,6 +359,21 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
                 )}
               />
             </div>
+            {cardAmount > 0 && (
+                 <FormField
+                    control={form.control}
+                    name="authCode"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Authorization Code</FormLabel>
+                        <FormControl>
+                            <Input placeholder="Enter auth code for card payment" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                 />
+            )}
              <FormField
               control={form.control}
               name="depositSlipPreview"
@@ -361,7 +381,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
                 <FormItem>
                   <FormLabel>Deposit Slip</FormLabel>
                   <FormControl>
-                    <div>
+                    <div >
                       <Input 
                         type="file" 
                         className="hidden"
@@ -404,5 +424,3 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
     </Dialog>
   );
 }
-
-    
