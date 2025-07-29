@@ -72,7 +72,7 @@ export function CollectionsClient() {
   }
 
   const handleDeleteSelected = async () => {
-    if (selectedIds.size === 0 || !collections) return;
+    if (selectedIds.size === 0) return;
     if (!confirm(`Are you sure you want to delete ${selectedIds.size} selected item(s)?`)) {
       return;
     }
