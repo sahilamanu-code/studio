@@ -38,6 +38,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         onLogout={handleLogout}
       />
       <SidebarInset>
+        <div className="flex items-center p-4 border-b md:hidden">
+          <SidebarTrigger />
+          <h1 className="ml-2 text-lg font-semibold">Trie | Operations</h1>
+        </div>
         <div className="p-4 sm:p-6 lg:p-8">
           {children}
         </div>

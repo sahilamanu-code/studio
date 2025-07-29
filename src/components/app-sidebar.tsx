@@ -62,9 +62,7 @@ export function AppSidebar({ isAuthenticated, onAuthRequest, onLogout }: AppSide
             </h1>
           </Link>
           <div className="md:hidden">
-            <SidebarTrigger />
-          </div>
-        </div>
+        <SidebarTrigger />
       </SidebarHeader>
       <SidebarContent>
         <SidebarMenu>
