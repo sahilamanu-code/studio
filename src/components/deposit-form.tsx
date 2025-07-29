@@ -37,7 +37,7 @@ import { Card, CardContent } from "./ui/card";
 import { Banknote, CreditCard, Paperclip, X } from "lucide-react";
 import Image from 'next/image';
 import { useFirestoreCollection } from "@/hooks/use-firestore-collection";
-import { addDoc, collection as firestoreCollection, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection as firestoreCollection, doc, updateDoc, writeBatch } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { getDownloadURL, ref, uploadString, deleteObject } from "firebase/storage";
 import { set } from "date-fns";
@@ -214,6 +214,9 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
 
 
         const totalAmount = (values.cashAmount || 0) + (values.cardAmount || 0);
+        
+        const batch = writeBatch(db);
+        
         const depositData: Omit<Deposit, "id"> = {
             date: values.date.toISOString(),
             cleanerName: values.cleanerName,
@@ -225,10 +228,16 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
         };
 
         if (deposit) {
-            await updateDoc(doc(db, "deposits", docId), depositData);
+            batch.update(doc(db, "deposits", docId), depositData);
+        } else {
+            batch.set(doc(db, "deposits", docId), depositData);
+        }
+        
+        await batch.commit();
+
+        if (deposit) {
             toast({ title: "Success", description: "Deposit updated successfully." });
         } else {
-            await addDoc(firestoreCollection(db, "deposits"), depositData);
             toast({ title: "Success", description: "Deposit recorded successfully." });
         }
         setIsOpen(false);
@@ -352,7 +361,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
                 <FormItem>
                   <FormLabel>Deposit Slip</FormLabel>
                   <FormControl>
-                    <>
+                    <div>
                       <Input 
                         type="file" 
                         className="hidden"
@@ -364,7 +373,7 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
                           <Paperclip className="mr-2 h-4 w-4"/>
                           Attach Slip
                        </Button>
-                    </>
+                    </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -395,3 +404,5 @@ export function DepositForm({ isOpen, setIsOpen, deposit }: DepositFormProps) {
     </Dialog>
   );
 }
+
+    
