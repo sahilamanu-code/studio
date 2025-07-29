@@ -7,7 +7,7 @@ import { AppLayout } from '@/components/app-layout';
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata: Metadata = {
-  title: 'KashFlow',
+  title: 'TriE Operations',
   description: 'Streamlined cash collection and reconciliation for cleaners.',
 };
 

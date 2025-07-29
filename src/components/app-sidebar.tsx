@@ -12,10 +12,10 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   LayoutDashboard,
-  CircleDollarSign,
   Banknote,
   Upload,
   HandCoins,
+  Waves
 } from "lucide-react";
 
 export function AppSidebar() {
@@ -33,10 +33,10 @@ export function AppSidebar() {
       <SidebarHeader className="p-4">
         <Link href="/" className="flex items-center gap-2.5">
           <div className="p-1.5 bg-sidebar-primary rounded-lg">
-            <CircleDollarSign className="h-6 w-6 text-sidebar-primary-foreground" />
+            <Waves className="h-6 w-6 text-sidebar-primary-foreground" />
           </div>
           <h1 className="text-xl font-bold font-headline text-sidebar-foreground">
-            KashFlow
+            TriE Operations
           </h1>
         </Link>
       </SidebarHeader>
