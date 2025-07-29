@@ -12,15 +12,18 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { HandCoins, Loader2 } from "lucide-react";
+import { HandCoins, Loader2, XCircle, Pencil } from "lucide-react";
 import { db } from "@/lib/firebase";
 import { writeBatch, doc, collection as firestoreCollection, deleteDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
+import { PendingItemForm } from "./pending-item-form";
 
 export function PendingClient() {
   const { data: pendingItems, loading } = useFirestoreCollection<PendingItem>("pendingItems", {field: "date", direction: "asc"});
   const { toast } = useToast();
   const [collectingId, setCollectingId] = useState<string | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<PendingItem | undefined>(undefined);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-AE", { style: "currency", currency: "AED" }).format(amount);
@@ -37,23 +40,47 @@ export function PendingClient() {
     }, {} as Record<string, PendingItem[]>);
   }, [pendingItems]);
 
+  const handleEdit = (item: PendingItem) => {
+    setSelectedItem(item);
+    setIsFormOpen(true);
+  };
+
+  const handleReject = async (itemId: string) => {
+    if (!confirm("Are you sure you want to reject and delete this pending item?")) {
+      return;
+    }
+    try {
+      await deleteDoc(doc(db, "pendingItems", itemId));
+      toast({
+        title: "Success",
+        description: "Pending item has been rejected and deleted.",
+      });
+    } catch (error) {
+       console.error("Error rejecting item:", error);
+       toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Could not reject item. Please try again.",
+      });
+    }
+  };
+
+
   const handleCollect = async (item: PendingItem) => {
     setCollectingId(item.id);
     try {
       const batch = writeBatch(db);
 
-      // 1. Create a new document in 'collections'
       const newCollectionRef = doc(firestoreCollection(db, "collections"));
       const newCollectionData = {
         cleanerName: item.cleanerName,
         site: item.site,
-        date: item.date, // or new Date().toISOString() if you want collection date to be now
+        date: new Date().toISOString(), 
         amount: item.amount,
         notes: `Collected from pending: ${item.carPlate}`,
       };
       batch.set(newCollectionRef, newCollectionData);
 
-      // 2. Delete the document from 'pendingItems'
       const pendingItemRef = doc(db, "pendingItems", item.id);
       batch.delete(pendingItemRef);
 
@@ -82,6 +109,12 @@ export function PendingClient() {
         description="Review imported items and confirm them as collected."
       />
 
+      <PendingItemForm 
+        isOpen={isFormOpen}
+        setIsOpen={setIsFormOpen}
+        item={selectedItem}
+      />
+
       {loading && <p>Loading pending items...</p>}
 
       {!loading && pendingItems.length === 0 && (
@@ -104,17 +137,34 @@ export function PendingClient() {
             <AccordionContent>
               <div className="border-t">
               {items.map((item) => (
-                <div key={item.id} className="flex items-center justify-between p-4 border-b">
-                  <div>
+                <div key={item.id} className="flex items-center justify-between p-4 border-b gap-2 flex-wrap">
+                  <div className="flex-grow">
                     <p className="font-bold text-lg">{item.carPlate}</p>
                     <p className="text-sm text-muted-foreground">{item.site}</p>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <span className="font-mono text-lg">{formatCurrency(item.amount)}</span>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={() => handleEdit(item)}
+                      title="Edit"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                     <Button
+                      size="icon"
+                      variant="destructive"
+                      onClick={() => handleReject(item.id)}
+                       title="Reject"
+                    >
+                      <XCircle className="h-4 w-4" />
+                    </Button>
                     <Button
                       size="sm"
                       onClick={() => handleCollect(item)}
                       disabled={collectingId === item.id}
+                      className="min-w-[110px]"
                     >
                       {collectingId === item.id ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />

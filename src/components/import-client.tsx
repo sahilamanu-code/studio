@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { PendingItem, Collection, Deposit } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Upload, Trash2 } from "lucide-react";
-import { writeBatch, doc, collection, getDocs, query, where } from "firebase/firestore";
+import { writeBatch, doc, collection, getDocs, query, where, deleteDoc } from "firebase/firestore";
 import { db, storage } from "@/lib/firebase";
 import { subDays } from "date-fns";
 import { deleteObject, ref } from "firebase/storage";
@@ -23,12 +23,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { Separator } from "./ui/separator";
 
 export function ImportClient() {
   const [pastedData, setPastedData] = useState("");
   const { toast } = useToast();
   const [isImporting, setIsImporting] = useState(false);
   const [isPurging, setIsPurging] = useState(false);
+  const [isPurgingAll, setIsPurgingAll] = useState(false);
 
   const handleParseData = async () => {
     setIsImporting(true);
@@ -36,7 +38,6 @@ export function ImportClient() {
     const newItems: Omit<PendingItem, 'id'>[] = [];
     let errors = 0;
 
-    // Remove header and identify column indices
     const headerLine = lines.shift()?.toLowerCase();
     if (!headerLine) {
         toast({
@@ -95,7 +96,6 @@ export function ImportClient() {
       try {
         const batch = writeBatch(db);
         newItems.forEach(item => {
-          // Use a more robust unique ID for pending items
           const docRef = doc(collection(db, "pendingItems"));
           batch.set(docRef, item);
         });
@@ -124,14 +124,13 @@ export function ImportClient() {
     setIsImporting(false);
   };
 
-  const handlePurge = async () => {
+  const handlePurgeOld = async () => {
     setIsPurging(true);
     try {
       const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
       let deletedCount = 0;
       const slipsToDelete: string[] = [];
 
-      // Purge collections
       const collectionsQuery = query(collection(db, "collections"), where("date", "<=", thirtyDaysAgo));
       const collectionsSnapshot = await getDocs(collectionsQuery);
       const collectionsBatch = writeBatch(db);
@@ -141,7 +140,6 @@ export function ImportClient() {
       });
       await collectionsBatch.commit();
       
-      // Purge deposits
       const depositsQuery = query(collection(db, "deposits"), where("date", "<=", thirtyDaysAgo));
       const depositsSnapshot = await getDocs(depositsQuery);
       const depositsBatch = writeBatch(db);
@@ -155,7 +153,6 @@ export function ImportClient() {
       });
       await depositsBatch.commit();
       
-      // Delete slips from storage
        const deletePromises = slipsToDelete.map(slipUrl => {
         try {
           const slipRef = ref(storage, slipUrl);
@@ -184,6 +181,63 @@ export function ImportClient() {
       setIsPurging(false);
     }
   };
+
+  const handlePurgeAll = async () => {
+    setIsPurgingAll(true);
+    let deletedCount = 0;
+    try {
+        const collectionsToDelete = await getDocs(collection(db, "collections"));
+        const depositsToDelete = await getDocs(collection(db, "deposits"));
+        const pendingToDelete = await getDocs(collection(db, "pendingItems"));
+        const slipsToDelete: string[] = [];
+
+        const batch = writeBatch(db);
+
+        collectionsToDelete.forEach(doc => {
+            batch.delete(doc.ref);
+            deletedCount++;
+        });
+        pendingToDelete.forEach(doc => {
+            batch.delete(doc.ref);
+            deletedCount++;
+        });
+        depositsToDelete.forEach(doc => {
+            const depositData = doc.data() as Deposit;
+            if (depositData.depositSlip) {
+                slipsToDelete.push(depositData.depositSlip);
+            }
+            batch.delete(doc.ref);
+            deletedCount++;
+        });
+
+        await batch.commit();
+
+        const deletePromises = slipsToDelete.map(slipUrl => {
+            try {
+                const slipRef = ref(storage, slipUrl);
+                return deleteObject(slipRef);
+            } catch (e) {
+                console.error(`Could not create storage reference for slip: ${slipUrl}`, e);
+                return Promise.resolve();
+            }
+        });
+        await Promise.allSettled(deletePromises);
+
+        toast({
+            title: "Purge All Successful",
+            description: `Successfully deleted ${deletedCount} record(s) from the database.`
+        });
+    } catch (error) {
+        console.error("Error purging all data:", error);
+        toast({
+            variant: "destructive",
+            title: "Purge Failed",
+            description: "An error occurred while purging all data.",
+        });
+    } finally {
+        setIsPurgingAll(false);
+    }
+};
 
 
   return (
@@ -225,20 +279,20 @@ export function ImportClient() {
             <CardHeader>
                 <CardTitle>Data Management</CardTitle>
                  <CardDescription>
-                    Free up space by deleting old records. This action cannot be undone. 
+                    Free up space by deleting records. These actions cannot be undone. 
                     It is recommended to export your data first.
                 </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
                  <AlertDialog>
                     <AlertDialogTrigger asChild>
-                       <Button variant="destructive" disabled={isPurging}>
+                       <Button variant="outline" disabled={isPurging}>
                             {isPurging ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             ) : (
                             <Trash2 className="mr-2 h-4 w-4" />
                             )}
-                            {isPurging ? "Purging..." : "Purge Old Data"}
+                            {isPurging ? "Purging..." : "Purge Data Older Than 30 Days"}
                         </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
@@ -251,7 +305,34 @@ export function ImportClient() {
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={handlePurge}>Continue</AlertDialogAction>
+                        <AlertDialogAction onClick={handlePurgeOld}>Continue</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+
+                <Separator />
+
+                 <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                       <Button variant="destructive" disabled={isPurgingAll}>
+                            {isPurgingAll ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            )}
+                            {isPurgingAll ? "Purging All Data..." : "Purge All Data"}
+                        </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                        <AlertDialogTitle>DANGER: Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action will permanently delete ALL data from the application, including collections, deposits, pending items, and all uploaded deposit slips. There is no way to recover this data.
+                        </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction className={buttonVariants({ variant: "destructive" })} onClick={handlePurgeAll}>Yes, delete everything</AlertDialogAction>
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
