@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import type { Collection, Deposit, PendingItem, CleanerSummary } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
@@ -9,11 +9,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { differenceInDays, parseISO } from "date-fns";
 import { AlertTriangle, TrendingUp } from "lucide-react";
+import { Skeleton } from "./ui/skeleton";
 
 export function DashboardClient() {
   const [collections] = useLocalStorage<Collection[]>("collections", []);
   const [deposits] = useLocalStorage<Deposit[]>("deposits", []);
   const [pendingItems] = useLocalStorage<PendingItem[]>("pendingItems", []);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const cleanerSummaries = useMemo<CleanerSummary[]>(() => {
     const allCollections = [...collections, ...pendingItems];
@@ -53,10 +59,59 @@ export function DashboardClient() {
   const totalCashInHand = useMemo(() => {
     return cleanerSummaries.reduce((acc, summary) => acc + summary.cashInHand, 0);
   }, [cleanerSummaries]);
+  
+  const totalAlerts = useMemo(() => {
+    return cleanerSummaries.filter(s => s.cashInHand > 5000 || (s.daysSinceLastCollection ?? 0) > 3).length
+  }, [cleanerSummaries]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED' }).format(amount);
   };
+
+  if (!isMounted) {
+    return (
+     <>
+      <PageHeader
+        title="Operations Dashboard"
+        description="Overview of cash in hand and cleaner performance."
+      />
+      <div className="grid gap-6 md:grid-cols-3 mb-8">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Cash In Hand</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-8 w-3/4" />
+            <Skeleton className="h-4 w-1/2 mt-1" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Cleaners with Alerts</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-8 w-1/4" />
+            <Skeleton className="h-4 w-3/4 mt-1" />
+          </CardContent>
+        </Card>
+      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Cleaner Balances</CardTitle>
+        </CardHeader>
+        <CardContent>
+           <div className="space-y-4">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+        </CardContent>
+      </Card>
+     </>
+    )
+  }
 
   return (
     <>
@@ -82,7 +137,7 @@ export function DashboardClient() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {cleanerSummaries.filter(s => s.cashInHand > 5000 || (s.daysSinceLastCollection ?? 0) > 3).length}
+              {totalAlerts}
             </div>
             <p className="text-xs text-muted-foreground">High balance or pending deposit</p>
           </CardContent>
