@@ -89,10 +89,11 @@ export function AppSidebar({ isAuthenticated, onAuthRequest, onLogout }: AppSide
           {protectedMenuItems.map((item) => (
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
-                asChild={isAuthenticated}
+                asChild={false}
                 isActive={isAuthenticated && (pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href)))}
                 className="justify-start"
                 tooltip={item.label}
+                onClick={isAuthenticated ? undefined : (e) => handleProtectedClick(e, item.href)}
               >
                 {isAuthenticated ? (
                   <Link href={item.href}>
@@ -100,11 +101,11 @@ export function AppSidebar({ isAuthenticated, onAuthRequest, onLogout }: AppSide
                     <span>{item.label}</span>
                   </Link>
                 ) : (
-                  <button onClick={(e) => handleProtectedClick(e, item.href)} className="w-full flex items-center gap-2">
+                  <div className="w-full flex items-center gap-2">
                     <item.icon />
                     <span>{item.label}</span>
                     <Lock className="ml-auto h-4 w-4 opacity-50" />
-                  </button>
+                  </div>
                 )}
               </SidebarMenuButton>
             </SidebarMenuItem>

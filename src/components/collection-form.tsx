@@ -71,7 +71,7 @@ export function CollectionForm({ isOpen, setIsOpen, collection }: CollectionForm
     defaultValues: {
       cleanerName: "",
       site: "",
-      date: undefined,
+      date: new Date(),
       amount: 0,
       notes: "",
     },
@@ -87,13 +87,10 @@ export function CollectionForm({ isOpen, setIsOpen, collection }: CollectionForm
       form.reset({
         cleanerName: "",
         site: "",
-        date: new Date(),
+        date: undefined,
         amount: 0,
         notes: "",
       });
-      if (isOpen && isMounted) {
-        form.setValue("date", new Date());
-      }
     }
   }, [collection, form, isOpen, isMounted]);
 

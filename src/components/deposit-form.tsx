@@ -131,7 +131,7 @@ export function DepositForm({ depositId }: DepositFormProps) {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      date: new Date(),
+      date: undefined,
       cleanerName: "",
       site: "",
       cashAmount: 0,
@@ -197,8 +197,15 @@ export function DepositForm({ depositId }: DepositFormProps) {
                 router.push('/deposits');
             }
         } else if (isMounted) {
-            // Only set default date after component is mounted to avoid hydration issues
-            form.setValue("date", new Date());
+            form.reset({
+                date: undefined,
+                cleanerName: "",
+                site: "",
+                cashAmount: 0,
+                cardAmount: 0,
+                authCode: "",
+                depositSlipPreview: "",
+            });
         }
     };
     fetchDeposit();
