@@ -86,6 +86,9 @@ export function CollectionForm({ isOpen, setIsOpen, collection }: CollectionForm
         amount: 0,
         notes: "",
       });
+      if (isOpen) {
+        form.setValue("date", new Date());
+      }
     }
   }, [collection, form, isOpen]);
 
